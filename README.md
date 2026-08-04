@@ -133,13 +133,22 @@ Duas flags existem porque a emulação tem limites conhecidos, e codificar isso 
 
 ```mermaid
 flowchart LR
-    bronze["S3<br/>evt-lakehouse-bronze"]
-    silver["S3<br/>evt-lakehouse-silver"]
-    gold["S3<br/>evt-lakehouse-gold"]
-    quarantine["S3<br/>evt-lakehouse-quarantine"]
-    artifacts["S3<br/>evt-lakehouse-artifacts"]
-    metrics[("DynamoDB<br/>evt-lakehouse-run-metrics")]
-    role["IAM<br/>evt-lakehouse-pipeline-role"]
+    subgraph datalake["Data Lake"]
+        bronze["S3<br/>evt-lakehouse-bronze"]
+        silver["S3<br/>evt-lakehouse-silver"]
+        gold["S3<br/>evt-lakehouse-gold"]
+        quarantine["S3<br/>evt-lakehouse-quarantine"]
+        artifacts["S3<br/>evt-lakehouse-artifacts"]
+    end
+
+    subgraph estado["Estado"]
+        metrics[("DynamoDB<br/>evt-lakehouse-run-metrics")]
+    end
+
+    subgraph seguranca["Segurança"]
+        role["IAM<br/>evt-lakehouse-pipeline-role"]
+    end
+
     role -.->|acessa| bronze
     role -.->|acessa| silver
     role -.->|acessa| gold
@@ -593,13 +602,25 @@ O Map com MaxConcurrency igual a 1 processa os estágios em sequência, porque g
 
 ```mermaid
 flowchart LR
-    metrics[("DynamoDB<br/>evt-lakehouse-run-metrics")]
-    role["IAM<br/>evt-lakehouse-pipeline-role"]
-    ops{{"Lambda<br/>evt-lakehouse-pipeline-ops"}}
-    sfn["Step Functions<br/>evt-lakehouse-daily-pipeline"]
-    logs["CloudWatch Logs<br/>/aws/vendedlogs/states/evt-lakehouse-daily-pipeline"]
-    sns(["SNS<br/>evt-lakehouse-pipeline-alerts"])
-    sqs[["SQS<br/>evt-lakehouse-alerts-inbox"]]
+    subgraph orquestracao["Orquestração"]
+        ops{{"Lambda<br/>evt-lakehouse-pipeline-ops"}}
+        sfn["Step Functions<br/>evt-lakehouse-daily-pipeline"]
+    end
+
+    subgraph alertas["Observabilidade & Alertas"]
+        logs["CloudWatch Logs<br/>/aws/vendedlogs/states/evt-lakehouse-daily-pipeline"]
+        sns(["SNS<br/>evt-lakehouse-pipeline-alerts"])
+        sqs[["SQS<br/>evt-lakehouse-alerts-inbox"]]
+    end
+
+    subgraph estado["Estado"]
+        metrics[("DynamoDB<br/>evt-lakehouse-run-metrics")]
+    end
+
+    subgraph seguranca["Segurança"]
+        role["IAM<br/>evt-lakehouse-pipeline-role"]
+    end
+
     role -.->|assume| ops
     role -.->|assume| sfn
     sfn -->|valida landing| ops
@@ -1300,12 +1321,21 @@ A escrita usa coalesce dimensionado pelo volume, para evitar o problema de arqui
 
 ```mermaid
 flowchart LR
-    bronze["S3<br/>evt-lakehouse-bronze"]
-    job1["Job PySpark bronze->silver"]
-    silver["S3<br/>evt-lakehouse-silver"]
-    quarantine["S3<br/>evt-lakehouse-quarantine"]
-    artifacts["S3<br/>evt-lakehouse-artifacts"]
-    ops{{"Lambda<br/>evt-lakehouse-pipeline-ops"}}
+    subgraph datalake["Data Lake"]
+        bronze["S3<br/>evt-lakehouse-bronze"]
+        silver["S3<br/>evt-lakehouse-silver"]
+        quarantine["S3<br/>evt-lakehouse-quarantine"]
+        artifacts["S3<br/>evt-lakehouse-artifacts"]
+    end
+
+    subgraph processamento["Processamento"]
+        job1["Job PySpark bronze->silver"]
+    end
+
+    subgraph orquestracao["Orquestração"]
+        ops{{"Lambda<br/>evt-lakehouse-pipeline-ops"}}
+    end
+
     bronze -->|lê| job1
     job1 -->|contrato de dados OK, Parquet| silver
     job1 -->|reprovou contrato| quarantine
@@ -2070,11 +2100,20 @@ A última parte do passo escreve a DAG equivalente em Airflow. Não é redundân
 
 ```mermaid
 flowchart LR
-    sfn["Step Functions<br/>evt-lakehouse-daily-pipeline"]
-    ops{{"Lambda<br/>evt-lakehouse-pipeline-ops"}}
-    metrics[("DynamoDB<br/>evt-lakehouse-run-metrics")]
-    sns(["SNS<br/>evt-lakehouse-pipeline-alerts"])
-    sqs[["SQS<br/>evt-lakehouse-alerts-inbox"]]
+    subgraph orquestracao["Orquestração"]
+        sfn["Step Functions<br/>evt-lakehouse-daily-pipeline"]
+        ops{{"Lambda<br/>evt-lakehouse-pipeline-ops"}}
+    end
+
+    subgraph alertas["Alertas"]
+        sns(["SNS<br/>evt-lakehouse-pipeline-alerts"])
+        sqs[["SQS<br/>evt-lakehouse-alerts-inbox"]]
+    end
+
+    subgraph estado["Estado"]
+        metrics[("DynamoDB<br/>evt-lakehouse-run-metrics")]
+    end
+
     sfn -->|valida landing/checkpoint| ops
     ops -->|lê/grava estado da execução| metrics
     sfn -->|Retry/Catch em falha| sns
