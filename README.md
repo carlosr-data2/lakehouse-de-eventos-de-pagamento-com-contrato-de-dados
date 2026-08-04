@@ -80,7 +80,7 @@ flowchart LR
     end
 
     fonte -->|eventos| bronze
-    fonte -.->|dimensão| artifacts
+    fonte -.->|dimensão| gold
     bronze --> job1
     job1 -->|aprovado| silver
     job1 -->|reprovado| quarantine
@@ -546,7 +546,7 @@ aws_s3_bucket.layer["quarantine"] -> evt-lakehouse-quarantine
 Isola os registros que reprovaram o contrato de dados, com o motivo anotado -- nunca descarta o dado ruim, só separa ele pra auditoria e pro cálculo da taxa de rejeição.
 
 aws_s3_bucket.layer["artifacts"] -> evt-lakehouse-artifacts
-Bucket auxiliar: guarda a dimensão de estabelecimentos (usada no join da camada gold) e os arquivos de métricas que cada estágio publica pro plano de controle ler.
+Bucket auxiliar: guarda os arquivos de métricas que cada estágio do pipeline publica pro plano de controle ler -- é artefato/estado de execução, não dado de negócio (a dimensão de estabelecimentos usada no join da camada gold fica no próprio bucket gold, não aqui).
 
 aws_s3_bucket_versioning.layer["bronze"]
 Versionamento ligado no bronze pra nunca perder o dado bruto original, mesmo que um reprocessamento sobrescreva a mesma partição.
@@ -1102,12 +1102,12 @@ O particionamento usa o esquema Hive (dt=YYYY-MM-DD). Não é preferência esté
 flowchart LR
     fonte["Gerador de<br/>eventos sintéticos"]
     bronze["S3<br/>evt-lakehouse-bronze"]
-    artifacts["S3<br/>evt-lakehouse-artifacts"]
+    gold["S3<br/>evt-lakehouse-gold"]
     fonte -->|grava eventos de pagamento,<br/>particionado por data| bronze
-    fonte -->|grava dimensão de estabelecimentos| artifacts
+    fonte -->|grava dimensão de estabelecimentos| gold
     classDef novo fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
     classDef existente fill:#f1f5f9,stroke:#94a3b8,stroke-width:1px,stroke-dasharray:4 3,color:#334155
-    class bronze,artifacts existente
+    class bronze,gold existente
 ```
 
 ```bash
@@ -1203,7 +1203,9 @@ def upload_day(s3, dt, events):
 
 
 # Dimensao de estabelecimentos: tabela pequena, ideal para broadcast join
-# na camada gold. Vai para o bucket de artifacts, nao para o bronze.
+# na camada gold. Vai direto para o bucket gold -- e dado de consumo
+# analitico, nao artefato de deploy nem evento bruto, entao nem bronze
+# nem artifacts fazem sentido aqui.
 def upload_merchants(s3, merchant_ids, rng):
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -1216,8 +1218,8 @@ def upload_merchants(s3, merchant_ids, rng):
             rng.choice(["SP", "RJ", "MG", "RS", "PE", "BA"]),
         ])
     s3.put_object(
-        Bucket=f"{PROJECT}-artifacts",
-        Key="dim/merchants/merchants.csv",
+        Bucket=f"{PROJECT}-gold",
+        Key="dim_merchants/merchants.csv",
         Body=buffer.getvalue().encode("utf-8"),
     )
 
@@ -1257,9 +1259,9 @@ python ingest/generate_events.py --dates 2026-07-01 2026-07-02 2026-07-03 --volu
 
 aws --endpoint-url=http://localhost:4566 s3 ls s3://evt-lakehouse-bronze/events/ --recursive
 
-Confirme que a dimensão de estabelecimentos chegou no bucket de artifacts:
+Confirme que a dimensão de estabelecimentos chegou no bucket gold:
 
-aws --endpoint-url=http://localhost:4566 s3 ls s3://evt-lakehouse-artifacts/dim/merchants/
+aws --endpoint-url=http://localhost:4566 s3 ls s3://evt-lakehouse-gold/dim_merchants/
 
 Inspecione o conteúdo bruto de uma partição para ver os defeitos com os próprios olhos:
 
@@ -1283,11 +1285,11 @@ Custo: zero no LocalStack. Na AWS real, três partições de aproximadamente 41 
 
 > 🧾 **Recursos criados:** Nenhum recurso novo -- este passo grava objetos nos buckets já criados no Passo 1:
 • evt-lakehouse-bronze recebe os eventos de pagamento sintéticos, particionados por data.
-• evt-lakehouse-artifacts recebe a dimensão de estabelecimentos, usada depois no join da camada gold.
+• evt-lakehouse-gold recebe a dimensão de estabelecimentos, que o job silver->gold vai usar no broadcast join do Passo 5.
 
 Total acumulado do projeto: 17 recursos.
 
-> ⏸️ **Pausar e retomar depois:** Os eventos gerados aqui são dado, não infraestrutura -- se o LocalStack perder o estado, as partições no bronze e a dimensão de estabelecimentos em artifacts somem junto com os buckets. Reaplicar o Terraform sozinho não traz esse dado de volta: é preciso rodar o gerador de eventos de novo (mesmo comando deste passo) antes de seguir pro job PySpark do Passo 4, que lê exatamente esses arquivos.
+> ⏸️ **Pausar e retomar depois:** Os eventos gerados aqui são dado, não infraestrutura -- se o LocalStack perder o estado, as partições no bronze e a dimensão de estabelecimentos em gold somem junto com os buckets. Reaplicar o Terraform sozinho não traz esse dado de volta: é preciso rodar o gerador de eventos de novo (mesmo comando deste passo) antes de seguir pro job PySpark do Passo 4, que lê exatamente esses arquivos.
 
 ### 4. Job PySpark bronze para silver: contrato de dados, quarentena e testes unitários
 
@@ -1766,7 +1768,7 @@ flowchart LR
     job2["Job PySpark silver->gold"]
     gold["S3<br/>evt-lakehouse-gold"]
     silver -->|lê eventos validados| job2
-    artifacts -->|lê dimensão de<br/>estabelecimentos, broadcast join| job2
+    gold -->|lê dimensão de<br/>estabelecimentos, broadcast join| job2
     job2 -->|agregações por estabelecimento/dia| gold
     job2 -->|publica métricas do estágio| artifacts
     classDef novo fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
@@ -1914,10 +1916,10 @@ def main():
     )
     silver.createOrReplaceTempView("silver_events")
 
-    # Dimensao pequena lida do bucket de artifacts, alvo do broadcast join.
+    # Dimensao pequena lida do proprio bucket gold, alvo do broadcast join.
     dim = (
         spark.read.option("header", "true")
-        .csv(f"s3a://{p}-artifacts/dim/merchants/merchants.csv")
+        .csv(f"s3a://{p}-gold/dim_merchants/merchants.csv")
     )
     dim.createOrReplaceTempView("dim_merchants")
 
@@ -2064,13 +2066,13 @@ O arquivo sql/redshift_gold.sql não é executado localmente, porque Redshift n�
 
 > ☁️ **AWS:** Autenticação: mesma do passo 4 — S3A com credenciais fake e endpoint do LocalStack dentro da rede Docker.
 
-Recursos usados (nenhum criado): evt-lakehouse-silver (leitura), evt-lakehouse-artifacts (leitura da dimensão e escrita de métricas) e evt-lakehouse-gold (escrita).
+Recursos usados (nenhum criado): evt-lakehouse-silver (leitura), evt-lakehouse-gold (leitura da dimensão e escrita das agregações) e evt-lakehouse-artifacts (escrita de métricas).
 
 Passo a passo: escrever o job e o SQL de Redshift, executar spark-submit para as três datas em ordem crescente, verificar o resultado e as métricas.
 
 Custo: zero no LocalStack. Na AWS real, o custo relevante é de leitura: a janela deslizante de três dias lê aproximadamente três partições em vez de todo o histórico, e é isso que mantém o custo constante ao longo do tempo em vez de crescente. Em Athena, cobrado por dado escaneado (cerca de US$ 5 por TB), consultar a gold particionada com filtro por dt escaneia poucos megabytes; a mesma consulta sem o filtro escanearia a tabela inteira. Em Redshift Spectrum a lógica de cobrança é a mesma, o que explica por que o filtro por partição é a primeira coisa a verificar quando a fatura sobe.
 
-> 🧾 **Recursos criados:** Nenhum recurso novo -- usa evt-lakehouse-silver (leitura), evt-lakehouse-artifacts (leitura da dimensão + escrita de métricas) e evt-lakehouse-gold (escrita), todos provisionados no Passo 1.
+> 🧾 **Recursos criados:** Nenhum recurso novo -- usa evt-lakehouse-silver (leitura), evt-lakehouse-gold (leitura da dimensão + escrita das agregações) e evt-lakehouse-artifacts (escrita de métricas), todos provisionados no Passo 1.
 
 Total acumulado do projeto: 17 recursos.
 
