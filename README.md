@@ -34,42 +34,71 @@ Tudo roda em LocalStack. Isso não é atalho — é uma prática de DataOps: amb
 
 ```mermaid
 flowchart LR
-    fonte["Gerador de<br/>eventos sintéticos"]
-    bronze["S3<br/>evt-lakehouse-bronze"]
-    job1["Job PySpark bronze->silver"]
-    silver["S3<br/>evt-lakehouse-silver"]
-    quarantine["S3<br/>evt-lakehouse-quarantine"]
-    artifacts["S3<br/>evt-lakehouse-artifacts"]
-    job2["Job PySpark silver->gold"]
-    gold["S3<br/>evt-lakehouse-gold"]
-    ops{{"Lambda<br/>evt-lakehouse-pipeline-ops"}}
-    metrics[("DynamoDB<br/>evt-lakehouse-run-metrics")]
-    sfn["Step Functions<br/>evt-lakehouse-daily-pipeline"]
-    logs["CloudWatch Logs<br/>/aws/vendedlogs/states/evt-lakehouse-daily-pipeline"]
-    sns(["SNS<br/>evt-lakehouse-pipeline-alerts"])
-    sqs[["SQS<br/>evt-lakehouse-alerts-inbox"]]
-    role["IAM<br/>evt-lakehouse-pipeline-role"]
+    subgraph ingestao["Ingestão"]
+        fonte["Gerador de<br/>eventos sintéticos"]
+    end
 
-    fonte -->|eventos de pagamento| bronze
-    fonte -->|dimensão de estabelecimentos| artifacts
-    bronze -->|lê| job1
-    job1 -->|contrato OK, Parquet| silver
-    job1 -->|reprovou contrato| quarantine
-    job1 -->|métricas do estágio| artifacts
-    silver -->|lê| job2
-    artifacts -->|dimensão, broadcast join| job2
+    subgraph bronze_col["Bronze"]
+        bronze["S3<br/>evt-lakehouse-bronze"]
+    end
+
+    subgraph proc1["Processamento"]
+        job1["Job PySpark<br/>bronze -> silver"]
+    end
+
+    subgraph silver_col["Silver / Quarentena"]
+        silver["S3<br/>evt-lakehouse-silver"]
+        quarantine["S3<br/>evt-lakehouse-quarantine"]
+    end
+
+    subgraph proc2["Processamento"]
+        job2["Job PySpark<br/>silver -> gold"]
+    end
+
+    subgraph gold_col["Gold"]
+        gold["S3<br/>evt-lakehouse-gold"]
+    end
+
+    subgraph orquestracao["Orquestração"]
+        sfn["Step Functions<br/>evt-lakehouse-daily-pipeline"]
+        ops{{"Lambda<br/>evt-lakehouse-pipeline-ops"}}
+    end
+
+    subgraph estado["Estado & Scripts"]
+        metrics[("DynamoDB<br/>evt-lakehouse-run-metrics")]
+        artifacts["S3<br/>evt-lakehouse-artifacts"]
+    end
+
+    subgraph alertas["Observabilidade & Alertas"]
+        logs["CloudWatch Logs<br/>evt-lakehouse-daily-pipeline"]
+        sns(["SNS<br/>evt-lakehouse-pipeline-alerts"])
+        sqs[["SQS<br/>evt-lakehouse-alerts-inbox"]]
+    end
+
+    subgraph seguranca["Segurança"]
+        role["IAM<br/>evt-lakehouse-pipeline-role"]
+    end
+
+    fonte -->|eventos| bronze
+    fonte -.->|dimensão| artifacts
+    bronze --> job1
+    job1 -->|aprovado| silver
+    job1 -->|reprovado| quarantine
+    job1 -.->|métricas| artifacts
+    silver --> job2
     job2 -->|agregações| gold
-    job2 -->|métricas do estágio| artifacts
+    job2 -.->|métricas| artifacts
 
-    sfn -->|orquestra bronze->silver->gold| job1
+    sfn -->|orquestra| job1
     sfn -->|orquestra| job2
-    sfn -->|valida landing, checkpoint| ops
-    ops -->|lê/grava estado| metrics
-    sfn -->|log de execução| logs
-    sfn -->|Retry/Catch, notifica| sns
-    sns -->|assinatura| sqs
-    role -.->|assume/acessa| sfn
-    role -.->|assume/acessa| ops
+    sfn -.->|valida/checkpoint| ops
+    ops -.->|lê/grava| metrics
+    sfn -.->|log| logs
+    sfn -.->|alerta| sns
+    sns -.->|assinatura| sqs
+
+    role -.->|assume| sfn
+    role -.->|assume| ops
 ```
 
 ## Passo a passo — versão Docker / local (sem custo)
