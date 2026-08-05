@@ -1,7 +1,10 @@
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    aws     = { source = "hashicorp/aws", version = "~> 5.60" }
+    # aws travado abaixo de 5.67: a partir dela o provider valida a definicao de
+    # Step Functions via ValidateStateMachineDefinition, API que o LocalStack
+    # community nao implementa -- o apply quebra com 501 mesmo com a definicao certa.
+    aws     = { source = "hashicorp/aws", version = ">= 5.60.0, < 5.67.0" }
     archive = { source = "hashicorp/archive", version = "~> 2.4" }
   }
 }
