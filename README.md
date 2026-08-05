@@ -91,7 +91,7 @@ flowchart LR
 | Quarentena como área de primeira classe | Descartar/corrigir reprovados em silêncio | Dado descartado silenciosamente é o jeito mais rápido de perder confiança no lakehouse |
 | LocalStack para todo o ciclo local e CI | Conta AWS de desenvolvimento | Ambiente descartável, idêntico na forma dos recursos, custo zero, feedback em segundos |
 
-A justificativa completa de cada decisão está no [roteiro de construção](docs/ROTEIRO.md).
+A justificativa completa de cada decisão — contexto, alternativas rejeitadas e consequências — está em [`docs/DECISOES.md`](docs/DECISOES.md).
 
 ## Estrutura do repositório
 
@@ -141,11 +141,15 @@ O workflow ([`ci.yml`](.github/workflows/ci.yml)) roda em três estágios, do ma
 
 ## Limitações assumidas
 
-Role IAM única para todo o pipeline, ausência de formato de tabela transacional (Iceberg/Delta), ausência de gatilho por evento e de detecção de deriva de schema. As duas flags de variável que isolam o que o LocalStack community não emula estão documentadas em [`infra/variables.tf`](infra/variables.tf).
+Role IAM única para todo o pipeline, ausência de formato de tabela transacional (Iceberg/Delta), ausência de gatilho por evento e de detecção de deriva de schema. As duas flags de variável que isolam o que o LocalStack community não emula estão documentadas em [`infra/variables.tf`](infra/variables.tf). O porquê de cada limitação e o caminho de evolução estão em [`docs/LIMITACOES.md`](docs/LIMITACOES.md).
 
-## Roteiro de construção
+## Documentação
 
-O projeto foi construído em 7 passos documentados — teoria, decisões, código comentado e verificação de cada etapa — em [`docs/ROTEIRO.md`](docs/ROTEIRO.md) (~18h de trabalho efetivo distribuídas em 2–3 semanas).
+- [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) — por que o projeto tem essa forma: camadas, fluxo e diagramas por componente
+- [`docs/DECISOES.md`](docs/DECISOES.md) — ADRs: cada decisão com contexto, alternativas e consequências
+- [`docs/OPERACAO.md`](docs/OPERACAO.md) — runbook: subir, rodar, verificar cada etapa e desmontar
+- [`docs/LIMITACOES.md`](docs/LIMITACOES.md) — o que falta pra produção e o caminho de evolução de cada item
+- [`docs/CI.md`](docs/CI.md) — anatomia do pipeline de CI e os problemas reais que ele pegou
 
 ## Licença
 
