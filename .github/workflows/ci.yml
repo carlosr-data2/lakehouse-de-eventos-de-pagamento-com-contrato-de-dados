@@ -26,7 +26,7 @@ jobs:
           python-version: "3.12"
       - name: lint python
         run: |
-          pip install ruff
+          pip install ruff==0.16.1
           ruff check jobs ingest lambda ci tests
 
   # Estagio 2: testes unitarios do contrato de dados. SparkSession local,

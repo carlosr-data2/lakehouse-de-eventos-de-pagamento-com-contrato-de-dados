@@ -1,9 +1,6 @@
 import argparse
 from datetime import datetime, timezone
 
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
-
 from contract import (
     RAW_SCHEMA,
     apply_contract,
@@ -12,6 +9,8 @@ from contract import (
     shape_silver,
     split_valid_quarantine,
 )
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 
 
 # SparkSession configurada para falar S3A com o LocalStack. path.style.access

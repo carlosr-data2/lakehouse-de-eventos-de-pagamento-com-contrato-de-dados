@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "jobs"))
 
-from contract import (  # noqa: E402
+from contract import (
     apply_contract,
     cast_types,
     deduplicate,
