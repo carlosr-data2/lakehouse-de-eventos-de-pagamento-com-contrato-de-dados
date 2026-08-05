@@ -133,7 +133,7 @@ make destroy
 
 ## Testes e CI
 
-O workflow ([`ci.yml`](.github/workflows/ci.yml)) roda em três estágios, do mais barato pro mais caro:
+O workflow ([`ci.yml`](.github/workflows/ci.yml)) roda em três estágios, do mais barato pro mais caro — a anatomia completa, as decisões (versões pinadas, socket do Docker no LocalStack, destroy garantido) e como reproduzir cada estágio localmente estão em [`docs/CI.md`](docs/CI.md):
 
 1. **static** — `terraform fmt`/`validate` + `ruff` (segundos, pega erro trivial antes de subir qualquer coisa).
 2. **unit** — pytest do contrato de dados com SparkSession local, sem infraestrutura.
