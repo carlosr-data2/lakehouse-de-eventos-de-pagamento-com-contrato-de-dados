@@ -24,7 +24,7 @@ RAW_SCHEMA = StructType([
 # o job. O NULL resultante e capturado depois pelas regras do contrato.
 def cast_types(df: DataFrame) -> DataFrame:
     return (
-        df.withColumn("amount_cents_typed", F.try_cast(F.col("amount_cents"), "long"))
+        df.withColumn("amount_cents_typed", F.col("amount_cents").try_cast("long"))
           .withColumn("occurred_at_typed", F.to_timestamp("occurred_at"))
     )
 
