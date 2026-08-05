@@ -20,11 +20,12 @@ RAW_SCHEMA = StructType([
 ])
 
 
-# Conversao tipada com try_cast: valor invalido vira NULL em vez de derrubar
-# o job. O NULL resultante e capturado depois pelas regras do contrato.
+# Conversao tipada com try_cast (via expressao SQL -- a funcao so existe no
+# modulo Python a partir do PySpark 4): valor invalido vira NULL em vez de
+# derrubar o job. O NULL resultante e capturado depois pelas regras do contrato.
 def cast_types(df: DataFrame) -> DataFrame:
     return (
-        df.withColumn("amount_cents_typed", F.col("amount_cents").try_cast("long"))
+        df.withColumn("amount_cents_typed", F.expr("try_cast(amount_cents AS long)"))
           .withColumn("occurred_at_typed", F.to_timestamp("occurred_at"))
     )
 
