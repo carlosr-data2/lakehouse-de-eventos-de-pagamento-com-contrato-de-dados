@@ -1,6 +1,6 @@
 # Lakehouse de Eventos de Pagamento — contrato de dados, Step Functions e CI/CD
 
-[![ci](https://github.com/carlosr-data2/lakehouse-de-eventos-de-pagamento-com-contrato-de-dados-step/actions/workflows/ci.yml/badge.svg)](https://github.com/carlosr-data2/lakehouse-de-eventos-de-pagamento-com-contrato-de-dados-step/actions/workflows/ci.yml)
+[![ci](https://github.com/carlosr-data2/lakehouse-de-eventos-de-pagamento-com-contrato-de-dados/actions/workflows/ci.yml/badge.svg)](https://github.com/carlosr-data2/lakehouse-de-eventos-de-pagamento-com-contrato-de-dados/actions/workflows/ci.yml)
 
 Pipeline de dados ponta a ponta construído a partir dos requisitos de uma vaga real de **Engenheiro de Dados Sênior**: arquitetura medallion (bronze/silver/gold) com quarentena, contrato de dados explícito, processamento em PySpark, orquestração serverless com Step Functions e CI em três estágios — tudo rodando **100% local e sem custo** via LocalStack, com o mesmo Terraform que subiria na AWS real.
 
