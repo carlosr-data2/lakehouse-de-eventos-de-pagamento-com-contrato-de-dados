@@ -1,0 +1,44 @@
+.PHONY: up down fmt validate test apply ingest silver gold pipeline smoke destroy
+
+DATES ?= 2026-07-01 2026-07-02 2026-07-03
+ENDPOINT ?= http://localhost:4566
+SPARK = docker run --rm --network lakehouse-net --user root \
+	-v $(PWD)/jobs:/opt/jobs -v $(PWD)/.ivy:/root/.ivy2 bitnami/spark:3.5.1 spark-submit \
+	--packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+
+up:
+	docker compose up -d
+	until curl -s $(ENDPOINT)/_localstack/health | grep -q '"s3"'; do sleep 2; done
+
+fmt:
+	terraform -chdir=infra fmt -check -recursive
+
+validate:
+	terraform -chdir=infra init -backend=false && terraform -chdir=infra validate
+
+test:
+	docker run --rm --user root -v $(PWD):/app -w /app bitnami/spark:3.5.1 \
+		bash -lc "pip install pytest --quiet && python -m pytest tests -q"
+
+apply:
+	terraform -chdir=infra init && terraform -chdir=infra apply -auto-approve
+
+ingest:
+	python ingest/generate_events.py --dates $(DATES) --endpoint $(ENDPOINT)
+
+silver:
+	for d in $(DATES); do $(SPARK) --py-files /opt/jobs/contract.py \
+		/opt/jobs/bronze_to_silver.py --dt $$d --endpoint http://localstack:4566; done
+
+gold:
+	for d in $(DATES); do $(SPARK) /opt/jobs/silver_to_gold.py \
+		--dt $$d --endpoint http://localstack:4566; done
+
+pipeline: up apply ingest silver gold
+
+smoke:
+	python ci/smoke_test.py --endpoint $(ENDPOINT)
+
+destroy:
+	terraform -chdir=infra destroy -auto-approve
+	docker compose down -v

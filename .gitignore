@@ -1,0 +1,22 @@
+# Terraform -- state e caches nunca vao pro Git (o lock file .terraform.lock.hcl vai)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Spark local
+spark-warehouse/
+metastore_db/
+derby.log
+
+# SO / editor
+.DS_Store
+.idea/

@@ -1,0 +1,20 @@
+services:
+  localstack:
+    image: localstack/localstack:3.8
+    container_name: localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,iam,sts,dynamodb,lambda,stepfunctions,sns,sqs,logs
+      - DEBUG=0
+      - LAMBDA_DOCKER_NETWORK=lakehouse-net
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./.localstack:/var/lib/localstack"
+    networks:
+      - lakehouse-net
+
+networks:
+  lakehouse-net:
+    name: lakehouse-net
