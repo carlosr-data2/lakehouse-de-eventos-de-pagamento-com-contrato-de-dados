@@ -56,7 +56,7 @@ terraform -chdir=infra destroy -auto-approve
 
 ## Problemas reais que o CI pegou (e as correções)
 
-Este repositório nasceu de um roteiro em que o código existia só como texto num README. Ao materializar os arquivos e ligar o CI, **quatro problemas reais que estavam invisíveis apareceram na primeira semana** — cada um com seu commit de correção no histórico:
+Este repositório nasceu de um roteiro em que o código existia só como texto num README. Ao materializar os arquivos e ligar o CI, **cinco problemas reais que estavam invisíveis apareceram na primeira semana** — cada um com seu commit de correção no histórico:
 
 1. **Lint: variável `l` ambígua** (`ci/smoke_test.py`, regra E741). Em fonte com serifa, `l`, `1` e `I` se confundem — renomeada para `camada`.
 2. **Drift de versão do linter.** O workflow instalava `ruff` sem pin; uma versão nova passou a exigir ordenação de imports diferente e o build quebrou sem mudança de código. Correção dupla: aplicar as regras novas **e** pinar a versão.
@@ -64,7 +64,7 @@ Este repositório nasceu de um roteiro em que o código existia só como texto n
 4. **`Docker not available` na criação da Lambda.** O service container do LocalStack não tinha o socket do Docker do runner — ver a decisão documentada acima.
 5. **`ValidateStateMachineDefinition` não implementada no LocalStack community.** A partir do provider AWS 5.67, o Terraform valida a definição da máquina de estados chamando essa API antes de criar — e o emulador responde 501, quebrando o apply mesmo com a definição correta. O `~> 5.60` original permitia o provider subir até aí; a correção é a trava explícita `>= 5.60.0, < 5.67.0` em `required_providers`, com o motivo comentado no código.
 
-A lição que vale entrevista: **código que nenhuma ferramenta executa é código não verificado**, por mais revisado que pareça. Os quatro erros existiam desde a primeira versão do roteiro e só apareceram quando o repositório virou software executável com verificação automática.
+A lição que vale entrevista: **código que nenhuma ferramenta executa é código não verificado**, por mais revisado que pareça. Os cinco erros existiam desde a primeira versão do roteiro e só apareceram quando o repositório virou software executável com verificação automática.
 
 ## Custo
 
