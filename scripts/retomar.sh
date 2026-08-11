@@ -159,8 +159,14 @@ fi
 etapa 6 "Dados"
 tem() { aws --endpoint-url="$ENDPOINT" s3 ls "s3://evt-lakehouse-$1" --recursive 2>/dev/null | grep -q . ; }
 if [ "$COM_DADOS" = 1 ]; then
-  ok "Reidratando: make ingest silver gold"
-  make ingest silver gold
+  # os alvos de dados nascem nos Passos 3-5; em máquina que ainda não os
+  # implementou, avisa em vez de quebrar no meio do make
+  if make -n ingest silver gold >/dev/null 2>&1; then
+    ok "Reidratando: make ingest silver gold"
+    make ingest silver gold
+  else
+    aviso "seu Makefile ainda não tem os alvos de dados (ingest/silver/gold) -- eles nascem nos Passos 3-5; implemente esses passos primeiro e a flag --com-dados passa a funcionar"
+  fi
 elif tem "bronze/events"; then
   tem "silver/events" && tem "gold/merchant_daily" \
     && ok "bronze, silver e gold populados -- cadeia de dados completa" \
