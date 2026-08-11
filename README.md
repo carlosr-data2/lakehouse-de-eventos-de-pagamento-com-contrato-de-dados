@@ -112,22 +112,21 @@ docs/        Roteiro completo de construção, com teoria e código comentado
 Pré-requisitos: Docker, Terraform e Python 3.12+.
 
 ```bash
-# 1. Subir o LocalStack
-docker compose up -d
+# 1. Subir LocalStack + provisionar a infraestrutura (17 recursos) num comando só
+#    (checa relógio/memória do WSL, espera o LocalStack ficar saudável, resolve
+#    state órfão e aplica o Terraform com retentativa -- ver docs/OPERACAO.md)
+make retomar
 
-# 2. Provisionar a infraestrutura (17 recursos)
-cd infra && terraform init && terraform apply -auto-approve && cd ..
-
-# 3. Rodar o pipeline (ingestão → bronze→silver → silver→gold)
+# 2. Rodar o pipeline (ingestão → bronze→silver → silver→gold)
 make pipeline
 
-# 4. Testes unitários do contrato (não precisam de infra)
+# 3. Testes unitários do contrato (não precisam de infra)
 make test
 
-# 5. Conferir os recursos criados
+# 4. Conferir os recursos criados
 cd infra && terraform state list | grep -v '^data\.' | wc -l   # deve mostrar 17
 
-# 6. Desmontar tudo
+# 5. Desmontar tudo
 make destroy
 ```
 

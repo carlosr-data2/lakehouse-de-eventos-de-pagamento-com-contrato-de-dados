@@ -1,4 +1,4 @@
-.PHONY: up down fmt validate test apply ingest silver gold pipeline smoke destroy
+.PHONY: up down fmt validate test apply ingest silver gold pipeline smoke destroy retomar
 
 DATES ?= 2026-07-01 2026-07-02 2026-07-03
 ENDPOINT ?= http://localhost:4566
@@ -9,6 +9,9 @@ SPARK = docker run --rm --network lakehouse-net --user root \
 up:
 	docker compose up -d
 	until curl -s $(ENDPOINT)/_localstack/health | grep -q '"s3"'; do sleep 2; done
+
+retomar:
+	bash scripts/retomar.sh $(if $(COM_DADOS),--com-dados)
 
 fmt:
 	terraform -chdir=infra fmt -check -recursive

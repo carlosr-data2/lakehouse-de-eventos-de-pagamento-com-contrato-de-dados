@@ -1,6 +1,39 @@
 # Operação — Lakehouse de Eventos de Pagamento com Contrato de Dados, Step Functions e CI/CD
 
-## Subir e retomar o ambiente
+## Retomada automatizada (caminho recomendado)
+
+Um comando substitui o passo a passo manual da seção seguinte:
+
+```bash
+make retomar              # sobe LocalStack + Terraform e deixa a infra pronta
+make retomar COM_DADOS=1  # além da infra, regera bronze/silver/gold (passos 3-5)
+```
+
+O `scripts/retomar.sh` executa, nesta ordem: pré-checagens da máquina (drift
+de relógio do WSL2 e memória disponível — os dois problemas reais que já
+derrubaram o apply neste projeto), sobe o LocalStack esperando **todos** os
+serviços ficarem saudáveis, detecta state órfão (state local com recursos que
+o emulador reiniciado não conhece mais — vira backup datado, nunca delete),
+roda `terraform init + apply` com `-parallelism=2` (paralelismo alto mata o
+plugin do provider por falta de memória no WSL) e uma retentativa automática,
+confere a contagem de recursos (17 com as flags padrão) com um smoke test, e
+por fim infere da máquina em que passo do projeto você parou. A saída bruta do
+Terraform vai para `/tmp/retomar-terraform.log`; no terminal fica só o resumo.
+
+Duas lições de WSL2 codificadas no script:
+
+- **Drift de relógio**: depois de suspend/hibernação o relógio da VM descola
+  do host — sintomas: `Creation complete after -1m48s` (tempo negativo) e
+  timeouts falsos no provider. Correção: `sudo hwclock -s`.
+- **`Plugin did not respond`**: o processo do provider AWS morre por pressão
+  de memória com o paralelismo padrão (10). Correção: `-parallelism=2`, que o
+  script já aplica sempre.
+
+O script nunca destrói nada: encerrar o dia continua sendo `make destroy`,
+decisão sua. Se estiver refazendo o projeto do zero e o state ainda não tiver
+os 17 recursos, sobrescreva a contagem esperada: `ESPERADO=11 make retomar`.
+
+## Subir e retomar o ambiente (passo a passo manual)
 
 ```bash
 # 1. Abrir o projeto no VS Code (Ubuntu) -- pasta raiz criada no Passo 1 (mkdir -p evt-lakehouse/...)
