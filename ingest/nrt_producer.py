@@ -15,7 +15,6 @@ import time
 from datetime import datetime, timezone
 
 import boto3
-
 from generate_events import clean_event, corrupt
 
 PROJECT = "evt-lakehouse"
