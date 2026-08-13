@@ -12,6 +12,11 @@
 # Rodar local (make test) e o ciclo de feedback de quem desenvolve; o CI
 # roda a MESMA suite a cada push, numa maquina limpa -- um itera rapido, o
 # outro e o portao do repositorio. Um nao substitui o outro.
+#
+# Nada aqui exige Docker: pip install pyspark ja embute o Spark inteiro
+# (basta uma JVM na maquina) -- o estagio unit do CI roda exatamente assim.
+# E nada exige Glue/EMR: os jobs sao PySpark puro sem GlueContext (ADR-005),
+# entao a logica e testavel em qualquer Python com Java.
 import sys
 from pathlib import Path
 
