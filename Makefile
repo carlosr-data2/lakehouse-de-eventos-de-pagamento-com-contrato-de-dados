@@ -1,4 +1,4 @@
-.PHONY: up down fmt validate test apply ingest silver gold pipeline smoke destroy retomar
+.PHONY: up down fmt validate test apply ingest silver gold pipeline smoke destroy retomar nrt cdc gold-pg
 
 DATES ?= 2026-07-01 2026-07-02 2026-07-03
 ENDPOINT ?= http://localhost:4566
@@ -38,6 +38,19 @@ gold:
 		--dt $$d --endpoint http://localstack:4566; done
 
 pipeline: up apply ingest silver gold
+
+# Caminho NRT: producer -> Kinesis -> Firehose -> bronze/events_nrt (ate 60s)
+nrt:
+	python ingest/nrt_producer.py --endpoint $(ENDPOINT)
+
+# CDC simulado: re-emite eventos do primeiro dt como upserts; depois rode
+# `make silver` de novo e confira a dedup ficando com o mais recente
+cdc:
+	python ingest/generate_cdc_updates.py --dt $(word 1,$(DATES)) --endpoint $(ENDPOINT)
+
+# Materializa a gold num Postgres local e roda validacao + EXPLAIN ANALYZE
+gold-pg:
+	bash scripts/redshift_pg/rodar_gold_pg.sh $(word 2,$(DATES))
 
 smoke:
 	python ci/smoke_test.py --endpoint $(ENDPOINT)

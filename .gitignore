@@ -20,3 +20,8 @@ derby.log
 # SO / editor
 .DS_Store
 .idea/
+
+# Saidas locais de laboratorio (event logs do SparkUI, export CSV pro Postgres)
+spark-events/
+.out/
+.ivy/
