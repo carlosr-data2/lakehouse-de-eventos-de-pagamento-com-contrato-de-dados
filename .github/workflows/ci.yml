@@ -1,3 +1,21 @@
+# Esta pasta (.github/workflows/) e vigiada pelo GitHub: cada .yml aqui e um
+# workflow que roda sozinho nos servidores deles, nos gatilhos declarados em
+# "on:". Nada a instalar -- o arquivo estar no repo e o que liga a esteira.
+#
+# Vocabulario minimo pra ler este arquivo:
+#   on:            gatilhos (push na main e todo pull request)
+#   jobs:          cada job nasce numa VM NOVA e descartavel (o "runner");
+#                  nada sobrevive entre jobs -- por isso todo job refaz o
+#                  checkout. "Passou no CI" = funciona numa maquina limpa.
+#   needs:         encadeia jobs (unit so roda se static passar) -- a
+#                  escada do mais barato pro mais caro
+#   steps:         sequencia dentro do job. "uses:" puxa action pronta do
+#                  marketplace (checkout, setup-python...; o @v4 e pinning),
+#                  "with:" parametriza, "run:" e shell puro
+#   services:      containers auxiliares que sobem junto do job (LocalStack)
+#   if: always():  roda o step mesmo com falha antes (o destroy da infra)
+#
+# Anatomia em prosa e decisoes: docs/CI.md.
 name: ci
 
 on:
