@@ -28,7 +28,7 @@ validate:
 
 test:
 	docker run --rm --user root -v $(PWD):/app -w /app bitnamilegacy/spark:3.5.1 \
-		bash -lc "pip install pytest --quiet && python -m pytest tests -q"
+		bash -c "pip install pytest --quiet && python -m pytest tests -q"
 
 apply:
 	terraform -chdir=infra init && terraform -chdir=infra apply -auto-approve
