@@ -26,8 +26,14 @@ fmt:
 validate:
 	terraform -chdir=infra init -backend=false && terraform -chdir=infra validate
 
+# PYTHONPATH explicito: python puro nao passa pelo spark-submit, que e quem
+# normalmente injeta o zip do py4j — sem ele, "No module named py4j".
+# E bash -c SEM -l: shell de login re-executa /etc/profile e reseta o PATH,
+# derrubando o /opt/bitnami/python/bin onde o pip vive.
 test:
-	docker run --rm --user root -v $(PWD):/app -w /app bitnamilegacy/spark:3.5.1 \
+	docker run --rm --user root -v $(PWD):/app -w /app \
+		-e PYTHONPATH=/opt/bitnami/spark/python:/opt/bitnami/spark/python/lib/py4j-0.10.9.7-src.zip \
+		bitnamilegacy/spark:3.5.1 \
 		bash -c "pip install pytest --quiet && python -m pytest tests -q"
 
 apply:
