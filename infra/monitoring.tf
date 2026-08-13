@@ -8,7 +8,9 @@
 #
 # Limite do emulador, documentado como sempre: o LocalStack community
 # aceita PutMetricData e o CRUD de alarmes, mas a AVALIACAO periodica do
-# alarme e best-effort. O teste honesto local e disparar a transicao na
+# alarme e best-effort - e o DescribeAlarms do 3.8 responde 500 mesmo com
+# o alarme criado (criacao e destruicao funcionam; o smoke test tolera a
+# leitura com aviso). O teste honesto local e disparar a transicao na
 # mao (aws cloudwatch set-alarm-state) e conferir a mensagem na fila SQS;
 # na AWS real a avaliacao e automatica e nada aqui muda.
 resource "aws_cloudwatch_metric_alarm" "reject_rate" {
