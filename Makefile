@@ -1,4 +1,4 @@
-.PHONY: up down fmt validate test apply ingest silver gold pipeline smoke destroy retomar nrt cdc gold-pg
+.PHONY: up down fmt validate test apply ingest silver gold pipeline smoke destroy retomar nrt cdc gold-pg visao
 
 DATES ?= 2026-07-01 2026-07-02 2026-07-03
 ENDPOINT ?= http://localhost:4566
@@ -66,6 +66,21 @@ cdc:
 # Materializa a gold num Postgres local e roda validacao + EXPLAIN ANALYZE
 gold-pg:
 	bash scripts/redshift_pg/rodar_gold_pg.sh $(word 2,$(DATES))
+
+# Autosservico: gera .out/visao-dados.html com contagens + amostras de TODAS
+# as camadas (bronze, NRT, silver, quarentena, gold, metricas) lidas do
+# LocalStack -- rode depois de qualquer passo e abra no navegador. Camada
+# que ainda nao existe aparece como "ainda nao gerada", nao como erro.
+visao:
+	mkdir -p .out
+	docker run --rm --network lakehouse-net --user root \
+		-v $(PWD)/scripts/visao:/opt/visao -v $(PWD)/.out:/out -v $(PWD)/.ivy:/root/.ivy2 \
+		bitnamilegacy/spark:3.5.1 spark-submit \
+		--packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
+		/opt/visao/gerar_visao.py --endpoint http://localstack:4566
+	@echo ""
+	@echo "Pronto: abra .out/visao-dados.html no navegador"
+	@echo "  (WSL: explorer.exe '.out\\visao-dados.html'  ou  wslview .out/visao-dados.html)"
 
 smoke:
 	python ci/smoke_test.py --endpoint $(ENDPOINT)
