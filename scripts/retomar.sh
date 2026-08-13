@@ -41,6 +41,13 @@ confirmar() { # pergunta só em terminal interativo; em CI/pipe segue com aviso
 }
 
 cd "$(dirname "$0")/.."   # raiz do projeto, independente de onde foi chamado
+
+# Ativa o venv do projeto se existir -- sem ele, python/pip não existem no
+# Ubuntu/WSL e a reidratação (--com-dados) quebra com "command not found".
+if [ -f .venv/bin/activate ]; then
+  source .venv/bin/activate
+fi
+
 command -v terraform >/dev/null || falha "terraform não encontrado no PATH"
 command -v docker    >/dev/null || falha "docker não encontrado no PATH"
 
