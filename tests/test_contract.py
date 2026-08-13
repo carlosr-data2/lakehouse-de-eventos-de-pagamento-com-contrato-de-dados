@@ -1,3 +1,17 @@
+# A pergunta que esta suite responde: "a LOGICA do contrato esta certa?" --
+# isolada de propina de infra de proposito: nada aqui toca S3, LocalStack ou
+# pipeline (quem responde "a infra sobe?" e o smoke test; "o dado de HOJE
+# esta ok?" e a quarentena + quality gate, em runtime).
+#
+# Os dados de teste nao vem do lake: cada teste FABRICA em memoria as 1-2
+# linhas de que precisa (ver _row/raw_df) -- minimas, cirurgicas e
+# deterministicas. Dado real e pessimo pra testar logica: grande (lento),
+# aleatorio (o cenario pode nem existir nele) e instavel (muda sem o codigo
+# mudar).
+#
+# Rodar local (make test) e o ciclo de feedback de quem desenvolve; o CI
+# roda a MESMA suite a cada push, numa maquina limpa -- um itera rapido, o
+# outro e o portao do repositorio. Um nao substitui o outro.
 import sys
 from pathlib import Path
 
@@ -29,7 +43,9 @@ def spark():
 
 
 # Helper que monta o DataFrame cru a partir de dicionarios, ja com todos os
-# campos como string (igual ao que sai do RAW_SCHEMA).
+# campos como string (igual ao que sai do RAW_SCHEMA). createDataFrame
+# constroi tudo na memoria do Spark local -- e por isso que a suite roda
+# sem nenhuma infraestrutura de pe.
 def raw_df(spark, rows):
     cols = ["event_id", "occurred_at", "customer_id", "merchant_id",
             "payment_method", "currency", "amount_cents", "status", "channel"]
@@ -39,6 +55,11 @@ def raw_df(spark, rows):
     )
 
 
+# A "linha perfeita": um evento valido em todos os campos. Cada teste
+# sabota SO o campo que quer exercitar (_row(amount_cents="abc")) -- assim
+# fica obvio qual regra causou o resultado, e o test_registro_valido_passa
+# ganha de graca o seu caso base. Padrao arrange-act-assert: monta o dado,
+# aplica a funcao real, confere a saida.
 def _row(**kwargs):
     base = {
         "event_id": "e1", "occurred_at": "2026-07-03T10:00:00", "customer_id": "cus_1",

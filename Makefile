@@ -26,6 +26,8 @@ fmt:
 validate:
 	terraform -chdir=infra init -backend=false && terraform -chdir=infra validate
 
+# Pergunta que este alvo responde: "a LOGICA das transformacoes esta certa?"
+# -- com dados fabricados em memoria, sem depender de LocalStack/S3 de pe.
 # PYTHONPATH explicito: python puro nao passa pelo spark-submit, que e quem
 # normalmente injeta o zip do py4j — sem ele, "No module named py4j".
 # E bash -c SEM -l: shell de login re-executa /etc/profile e reseta o PATH,
