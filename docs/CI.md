@@ -54,6 +54,28 @@ pip install boto3 && python ci/smoke_test.py --endpoint http://localhost:4566
 terraform -chdir=infra destroy -auto-approve
 ```
 
+## Os três andares de teste em dados — e onde rodar sem Docker
+
+A taxonomia que este repositório implementa (confundi-los é o erro mais comum):
+
+| Andar | Testa o quê | Quando roda | Aqui |
+|---|---|---|---|
+| **Unitário** | o CÓDIGO da transformação, com dado fabricado | a cada mudança de código | `tests/` (contrato + GOLD_SQL) |
+| **Integração** | o sistema montado — a infra sobe? | no CI, mais caro | estágio `integration` (Terraform + LocalStack + smoke) |
+| **De dados** (quality) | o DADO real de hoje, contra expectativas | em runtime, toda execução | quarentena com motivo + quality gate |
+
+A frase que organiza: **teste unitário protege contra mudança no código; teste de dados protege contra mudança no dado** — o primeiro roda quando você mexe, o segundo todo dia, porque a fonte mexe sem avisar.
+
+**E se o ambiente não permitir Docker?** O container é só conveniência (Java + Spark prontos). O que o unitário exige é Python + uma JVM + o pacote pyspark — e `pip install pyspark` **já embute o Spark inteiro** (os jars vêm no pacote; não existe "baixar o Spark separado" nem cluster). É exatamente o que o estágio `unit` deste CI faz:
+
+```bash
+sudo apt install -y openjdk-17-jre-headless   # a única dependência de sistema
+pip install pyspark==3.5.1 pytest
+python -m pytest tests -q                      # Spark local[*] DENTRO do processo do pytest
+```
+
+Por que não Glue nem EMR para isso: **EMR** é pagar cluster para verificar lógica que roda num laptop — é lugar de carga real e integração em conta de dev. **Glue** é o caso instrutivo: estes jobs são testáveis em qualquer lugar *exatamente porque* o ADR-005 os manteve PySpark puro — com `GlueContext`/`DynamicFrame`, o teste exigiria o runtime do Glue, que a AWS distribui como... imagem Docker (`aws-glue-libs`) ou sessões interativas pagas. A decisão de portabilidade é o que torna a pergunta trivial. Em empresa sem Docker local, os testes rodam no **CI gerenciado** (CodeBuild ou Actions) com esta mesma receita, em máquina descartável que não é a sua.
+
 ## Problemas reais que o CI pegou (e as correções)
 
 Este repositório nasceu de um roteiro em que o código existia só como texto num README. Ao materializar os arquivos e ligar o CI, **cinco problemas reais que estavam invisíveis apareceram na primeira semana** — cada um com seu commit de correção no histórico:
