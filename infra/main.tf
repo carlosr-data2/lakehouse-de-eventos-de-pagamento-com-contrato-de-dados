@@ -119,7 +119,9 @@ resource "aws_iam_role" "pipeline" {
         Service = [
           "lambda.amazonaws.com",
           "states.amazonaws.com",
-          "glue.amazonaws.com"
+          "glue.amazonaws.com",
+          "events.amazonaws.com",
+          "firehose.amazonaws.com"
         ]
       }
     }]
@@ -152,6 +154,13 @@ resource "aws_iam_policy" "pipeline" {
       {
         Effect   = "Allow"
         Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "*"
+      },
+      {
+        # PutMetricData nao aceita ARN por recurso: o escopo real e o
+        # namespace, controlado no codigo da Lambda (unica publicadora).
+        Effect   = "Allow"
+        Action   = ["cloudwatch:PutMetricData"]
         Resource = "*"
       }
     ]

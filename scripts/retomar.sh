@@ -14,7 +14,7 @@ set -euo pipefail
 # --- parâmetros (sobrescrevíveis via ambiente: ESPERADO=11 make retomar) ----
 ENDPOINT="${ENDPOINT:-http://localhost:4566}"
 INFRA_DIR="infra"
-ESPERADO="${ESPERADO:-17}"     # recursos no state com as flags padrão (passos 1-2)
+ESPERADO="${ESPERADO:-24}"     # recursos no state com as flags padrão (passos 1-2 + monitoramento/NRT)
 PARALELISMO="${PARALELISMO:-2}" # >2 derruba o plugin do provider por OOM no WSL
 DRIFT_MAX=5                     # segundos de drift de relógio tolerados
 SENTINELA="evt-lakehouse-bronze"

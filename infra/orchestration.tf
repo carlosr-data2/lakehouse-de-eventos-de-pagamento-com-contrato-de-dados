@@ -86,6 +86,10 @@ locals {
 
       # Percorre os estagios em ordem (MaxConcurrency 1 porque gold depende
       # de silver). Paralelizar no futuro e so aumentar esse numero.
+      # O dt vem de $.landing.dt (saida do ValidateLanding), nao do input:
+      # e o que permite ao agendamento do EventBridge passar dt="auto" e a
+      # Lambda resolver D-1 - execucao manual com dt explicito continua
+      # funcionando, porque a Lambda ecoa o dt recebido.
       ProcessStages = {
         Type           = "Map"
         ItemsPath      = "$.stages"
@@ -93,7 +97,7 @@ locals {
         Parameters = {
           "action"   = "checkpoint_stage"
           "run_id.$" = "$.run_id"
-          "dt.$"     = "$.dt"
+          "dt.$"     = "$.landing.dt"
           "stage.$"  = "$$.Map.Item.Value"
         }
         Iterator = {
@@ -128,7 +132,7 @@ locals {
         Parameters = {
           "action"   = "quality_gate"
           "run_id.$" = "$.run_id"
-          "dt.$"     = "$.dt"
+          "dt.$"     = "$.landing.dt"
         }
         ResultPath = "$.gate"
         Catch = [{

@@ -18,6 +18,17 @@ provider "aws" {
   skip_metadata_api_check     = true
   s3_use_path_style           = true
 
+  # FinOps comeca em tag: com todo recurso carimbado na origem, o Cost
+  # Explorer quebra a fatura por projeto/centro de custo sem depender de
+  # disciplina manual. Chaves distintas das tags por recurso (Project,
+  # Layer) de proposito, para somar em vez de conflitar.
+  default_tags {
+    tags = {
+      ManagedBy  = "terraform"
+      CostCenter = "dados-pagamentos"
+    }
+  }
+
   endpoints {
     s3             = "http://localhost:4566"
     iam            = "http://localhost:4566"
@@ -28,6 +39,10 @@ provider "aws" {
     sns            = "http://localhost:4566"
     sqs            = "http://localhost:4566"
     cloudwatchlogs = "http://localhost:4566"
+    cloudwatch     = "http://localhost:4566"
+    events         = "http://localhost:4566"
+    kinesis        = "http://localhost:4566"
+    firehose       = "http://localhost:4566"
     glue           = "http://localhost:4566"
   }
 }

@@ -5,7 +5,7 @@ services:
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=s3,iam,sts,dynamodb,lambda,stepfunctions,sns,sqs,logs
+      - SERVICES=s3,iam,sts,dynamodb,lambda,stepfunctions,sns,sqs,logs,kinesis,firehose,cloudwatch,events
       - DEBUG=0
       - LAMBDA_DOCKER_NETWORK=lakehouse-net
       - DOCKER_HOST=unix:///var/run/docker.sock

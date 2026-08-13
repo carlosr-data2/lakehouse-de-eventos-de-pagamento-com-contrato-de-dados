@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import boto3
 
@@ -63,10 +63,39 @@ def _read_stage_metrics(stage, dt):
     return {}
 
 
+# Publica metricas custom no CloudWatch - a serie temporal que o alarme de
+# monitoring.tf observa. Best-effort de proposito: metrica indisponivel nao
+# pode derrubar o pipeline (o dado dela ja esta no DynamoDB de qualquer
+# forma); a falha vai pro log e a execucao segue.
+def _publish_metrics(dimensions, values):
+    try:
+        _client("cloudwatch").put_metric_data(
+            Namespace=f"{PROJECT}/pipeline",
+            MetricData=[
+                {
+                    "MetricName": name,
+                    "Dimensions": [
+                        {"Name": k, "Value": v} for k, v in dimensions.items()
+                    ],
+                    "Value": float(value),
+                    "Timestamp": datetime.now(timezone.utc),
+                }
+                for name, value in values.items()
+            ],
+        )
+    except Exception as exc:  # noqa: BLE001 - best-effort, nunca derruba o run
+        print(f"[metrics] falha ao publicar no CloudWatch: {exc}")
+
+
 # Acao 1: valida se a particao do dia chegou no bronze. E a pre-condicao do
 # pipeline inteiro - falhar cedo aqui evita queimar recurso de cluster.
+# dt="auto" (ou ausente) resolve para D-1 em UTC: e assim que o agendamento
+# do EventBridge dispara sem saber aritmetica de data - os estados seguintes
+# leem o dt resolvido daqui ($.landing.dt), nao do input.
 def validate_landing(event):
-    dt = event["dt"]
+    dt = event.get("dt")
+    if not dt or dt == "auto":
+        dt = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
     bucket = f"{PROJECT}-bronze"
     prefix = f"events/dt={dt}/"
     count = _count_objects(bucket, prefix)
@@ -97,6 +126,18 @@ def checkpoint_stage(event):
             "recorded_at": {"S": datetime.now(timezone.utc).isoformat()},
         },
     )
+
+    # Serie temporal por estagio. Dimensao so por Stage - dt como dimensao
+    # criaria uma serie nova por dia (alta cardinalidade), o anti-padrao
+    # classico de custo em metrica custom.
+    _publish_metrics(
+        {"Stage": stage},
+        {
+            "output_objects": count,
+            "input_records": int(metrics.get("input_records", 0)),
+            "rejected_records": int(metrics.get("rejected_records", 0)),
+        },
+    )
     return {"stage": stage, "output_objects": count, "metrics": metrics}
 
 
@@ -119,6 +160,13 @@ def quality_gate(event):
     rejected = int(silver.get("rejected_records", 0))
     rate = (rejected / total) if total else 1.0
     status = "PASS" if rate <= MAX_REJECT_RATE else "FAIL"
+
+    # E esta metrica que o alarme reject-rate-alto observa: o quality gate
+    # decide POR EXECUCAO; o alarme acompanha a TENDENCIA entre execucoes.
+    _publish_metrics(
+        {"Gate": "quality"},
+        {"reject_rate": rate, "gate_pass": 1.0 if status == "PASS" else 0.0},
+    )
 
     return {
         "status": status,

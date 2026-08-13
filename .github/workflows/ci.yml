@@ -58,7 +58,7 @@ jobs:
         image: localstack/localstack:3.8
         ports: ["4566:4566"]
         env:
-          SERVICES: s3,iam,sts,dynamodb,lambda,stepfunctions,sns,sqs,logs
+          SERVICES: s3,iam,sts,dynamodb,lambda,stepfunctions,sns,sqs,logs,kinesis,firehose,cloudwatch,events
         # a Lambda do LocalStack executa cada função num container próprio --
         # sem o socket do Docker do runner montado, CreateFunction fica em
         # estado Failed ("Docker not available") e o apply quebra.

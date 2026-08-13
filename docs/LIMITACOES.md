@@ -14,9 +14,9 @@ Limitações **conscientes** do escopo atual — cada uma com o porquê de ter s
 
 **Evolução.** Iceberg nas camadas silver/gold: commits atômicos eliminam a janela de dado parcial, e schema evolution resolve parte da deriva (item 4).
 
-## 3. Sem gatilho por evento — pipeline agendado
+## 3. Sem gatilho por evento — pipeline agendado (agora via EventBridge)
 
-**Por que foi aceita.** A execução diária atende o caso de uso e mantém o custo de orquestração previsível.
+**Por que foi aceita.** A execução diária atende o caso de uso e mantém o custo de orquestração previsível. O agendamento é gerenciado (EventBridge → Step Functions, `infra/monitoring.tf`), com `dt` resolvido para D-1 pela Lambda de validação — automatizado, mas ainda por relógio, não por chegada de dado.
 
 **Evolução.** S3 → EventBridge → Step Functions para latência menor; exige idempotência reforçada (chegadas duplicadas) — a base já existe na deduplicação do contrato.
 
