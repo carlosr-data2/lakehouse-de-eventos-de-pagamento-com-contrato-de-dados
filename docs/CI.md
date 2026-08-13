@@ -12,6 +12,21 @@ Os três estágios são encadeados (`needs:`) em ordem crescente de custo. Erro 
 | `unit` | A lógica de negócio está certa (pytest do contrato de dados, Spark local, zero infra) | ~1min |
 | `integration` | A infraestrutura sobe do zero (LocalStack + `terraform apply` + smoke test) | ~2min |
 
+## Anatomia do `ci.yml` — o vocabulário do GitHub Actions
+
+`.github/workflows/` é uma pasta vigiada: cada `.yml` dentro dela vira um *workflow* que roda nos servidores do GitHub — não se instala nada; o arquivo estar no repositório é o que liga a automação.
+
+| Palavra-chave | O que significa |
+|---|---|
+| `on:` | os gatilhos — aqui, push na `main` e todo pull request (por isso cada PR roda sozinho) |
+| `jobs:` | cada job nasce numa **VM nova e descartável** (`runs-on: ubuntu-latest` = runner do GitHub); nada sobrevive entre jobs — todo job refaz o `checkout` |
+| `needs:` | encadeamento: `unit` só roda se `static` passou — a escada barato→caro em código |
+| `steps:` / `uses:` / `with:` / `run:` | sequência dentro do job; `uses:` importa uma action pronta do marketplace (o `@v4` é pinning, de novo), `with:` a parametriza, `run:` é shell puro |
+| `services:` | containers auxiliares que sobem junto do job — o LocalStack é o "docker compose do CI" |
+| `if: always()` | roda o step mesmo com falha antes — é o que garante o `destroy` da infra efêmera |
+
+O conceito que sustenta tudo: **o runner é efêmero**. "Passou no CI" significa "funciona numa máquina que nasceu limpa há dois minutos" — a prova de reprodutibilidade que nenhum "funciona na minha máquina" substitui.
+
 ## Decisões do workflow (e por quê)
 
 **Versões pinadas em tudo que o CI instala.** Terraform `1.9.5`, ruff `0.16.1`, PySpark `3.5.1`, LocalStack `3.8`. CI que instala "a versão mais nova" de uma ferramenta quebra sozinho quando a ferramenta muda de comportamento — aconteceu neste repositório (ver histórico abaixo): o ruff sem pin passou a aplicar regras novas de ordenação de import e derrubou um build sem nenhuma mudança de código. Pin não é conservadorismo, é reprodutibilidade: o mesmo commit dá o mesmo resultado hoje e daqui a seis meses. Atualizar versão vira uma decisão explícita, num commit próprio.
