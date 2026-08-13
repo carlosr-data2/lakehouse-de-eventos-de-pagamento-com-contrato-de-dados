@@ -26,7 +26,7 @@ fi
 docker run --rm --network lakehouse-net --user root \
   -v "$RAIZ/scripts/redshift_pg:/opt/pg" -v "$RAIZ/.out:/out" \
   -v "$RAIZ/.ivy:/root/.ivy2" \
-  bitnami/spark:3.5.1 spark-submit \
+  bitnamilegacy/spark:3.5.1 spark-submit \
   --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
   /opt/pg/exportar_gold_csv.py --endpoint http://localstack:4566
 

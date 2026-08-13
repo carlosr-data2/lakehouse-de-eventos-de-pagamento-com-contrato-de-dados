@@ -2,8 +2,15 @@
 
 DATES ?= 2026-07-01 2026-07-02 2026-07-03
 ENDPOINT ?= http://localhost:4566
+# bitnamilegacy: a Broadcom encerrou o catalogo gratuito da Bitnami no Docker
+# Hub e as tags versionadas de bitnami/spark passaram a dar "manifest
+# unknown"; o acervo congelado vive em bitnamilegacy/ (mesma imagem, mesmos
+# paths). Licao de pinning que vale entrevista: a tag pinada garante o
+# CONTEUDO, nao a DISPONIBILIDADE - em producao, espelhe a imagem num
+# registry proprio (ECR) em vez de depender do Hub. Alternativa mantida
+# aberta: apache/spark (paths, usuario e entrypoint diferentes).
 SPARK = docker run --rm --network lakehouse-net --user root \
-	-v $(PWD)/jobs:/opt/jobs -v $(PWD)/.ivy:/root/.ivy2 bitnami/spark:3.5.1 spark-submit \
+	-v $(PWD)/jobs:/opt/jobs -v $(PWD)/.ivy:/root/.ivy2 bitnamilegacy/spark:3.5.1 spark-submit \
 	--packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
 
 up:
@@ -20,7 +27,7 @@ validate:
 	terraform -chdir=infra init -backend=false && terraform -chdir=infra validate
 
 test:
-	docker run --rm --user root -v $(PWD):/app -w /app bitnami/spark:3.5.1 \
+	docker run --rm --user root -v $(PWD):/app -w /app bitnamilegacy/spark:3.5.1 \
 		bash -lc "pip install pytest --quiet && python -m pytest tests -q"
 
 apply:

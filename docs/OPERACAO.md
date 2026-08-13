@@ -195,7 +195,7 @@ Verifique o conteúdo analítico abrindo o Parquet e conferindo três coisas: se
 
 docker run --rm --network lakehouse-net --user root \
   -v "$(pwd)/jobs":/opt/jobs -v "$(pwd)/.ivy":/root/.ivy2 \
-  bitnami/spark:3.5.1 bash -lc "echo \"spark.read.parquet('s3a://evt-lakehouse-gold/merchant_daily/').orderBy('dt','rank_categoria').show(10, False)\" > /tmp/c.py && spark-submit --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 --conf spark.hadoop.fs.s3a.endpoint=http://localstack:4566 --conf spark.hadoop.fs.s3a.access.key=test --conf spark.hadoop.fs.s3a.secret.key=test --conf spark.hadoop.fs.s3a.path.style.access=true /tmp/c.py"
+  bitnamilegacy/spark:3.5.1 bash -lc "echo \"spark.read.parquet('s3a://evt-lakehouse-gold/merchant_daily/').orderBy('dt','rank_categoria').show(10, False)\" > /tmp/c.py && spark-submit --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 --conf spark.hadoop.fs.s3a.endpoint=http://localstack:4566 --conf spark.hadoop.fs.s3a.access.key=test --conf spark.hadoop.fs.s3a.secret.key=test --conf spark.hadoop.fs.s3a.path.style.access=true /tmp/c.py"
 
 Confirme que o plano de controle enxerga a saída do estágio gold:
 
