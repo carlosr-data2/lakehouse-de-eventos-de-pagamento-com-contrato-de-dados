@@ -79,6 +79,8 @@ A taxonomia que este repositório implementa (confundi-los é o erro mais comum)
 | **Integração** | o sistema montado — a infra sobe? | no CI, mais caro | estágio `integration` (Terraform + LocalStack + smoke) |
 | **De dados** (quality) | o DADO real de hoje, contra expectativas | em runtime, toda execução | quarentena com motivo + quality gate |
 
+Uma consequência prática que surpreende na primeira vez: **a suíte é do repositório, não do "passo" em que você está** — `pytest tests` roda a pasta inteira, sempre, porque a suíte é a rede de regressão do projeto: cada mudança é conferida também contra o que você *não* tocou. Testes de uma parte ainda não exercitada passam normalmente (testam código com dado fabricado, não o estado do lake). Filtro (`-k`, arquivo) serve para iterar rápido; encerrar trabalho pede a suíte inteira.
+
 A frase que organiza: **teste unitário protege contra mudança no código; teste de dados protege contra mudança no dado** — o primeiro roda quando você mexe, o segundo todo dia, porque a fonte mexe sem avisar.
 
 **E se o ambiente não permitir Docker?** O container é só conveniência (Java + Spark prontos). O que o unitário exige é Python + uma JVM + o pacote pyspark — e `pip install pyspark` **já embute o Spark inteiro** (os jars vêm no pacote; não existe "baixar o Spark separado" nem cluster). É exatamente o que o estágio `unit` deste CI faz:

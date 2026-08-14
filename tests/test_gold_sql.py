@@ -1,3 +1,12 @@
+# Estes testes guardam o GOLD_SQL desde ANTES do passo que executa o job:
+# unitario testa CODIGO com dado fabricado, nao o estado do lake -- rodam
+# verdes sem gold gerada, sem silver, sem LocalStack.
+#
+# E rodam JUNTO com os do contrato porque a suite e do repositorio, nao do
+# passo: pytest tests varre a pasta inteira -- a rede de regressao que
+# confere, a cada mudanca, tambem o que voce "nao tocou" (um ajuste no
+# contrato pode mudar coluna que a gold consome). Filtre com -k ou por
+# arquivo pra iterar; feche o trabalho com a suite inteira.
 import sys
 from pathlib import Path
 
