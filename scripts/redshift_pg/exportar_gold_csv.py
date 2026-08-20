@@ -1,13 +1,22 @@
-# Exporta a gold merchant_daily do lake (Parquet no S3/LocalStack) para UM
-# CSV com header em /out - a ponte entre o mundo colunar e o \copy do
-# Postgres. Roda dentro do container Spark, igual aos jobs (ver
-# rodar_gold_pg.sh, que monta /out no host).
+"""Exporta a gold merchant_daily do lake para um unico CSV com header.
+
+A ponte entre o mundo colunar (Parquet no S3/LocalStack) e o \\copy do
+Postgres de serving. Roda dentro do container Spark, igual aos jobs (ver
+rodar_gold_pg.sh, que monta /out no host).
+
+Origem:
+    s3://{project}-gold/merchant_daily/
+
+Destino:
+    /out/merchant_daily_csv/part-*.csv (um arquivo; consumido pelo \\copy)
+"""
 import argparse
 
 from pyspark.sql import SparkSession
 
 
 def build_spark(endpoint):
+    """Cria a SparkSession com a mesma configuracao S3A dos jobs do lake."""
     return (
         SparkSession.builder.appName("exportar_gold_csv")
         .config("spark.hadoop.fs.s3a.endpoint", endpoint)
@@ -24,6 +33,7 @@ def build_spark(endpoint):
 
 
 def main():
+    """Le a gold inteira e grava o CSV unico na ordem de colunas da DDL."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", default="evt-lakehouse")
     parser.add_argument("--endpoint", default="http://localstack:4566")

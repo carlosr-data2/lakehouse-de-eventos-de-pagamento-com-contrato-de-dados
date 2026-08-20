@@ -1,8 +1,10 @@
-# Gera .out/visao-dados.html: uma pagina local com as entradas e saidas de
-# cada camada do lakehouse (bronze, NRT, silver, quarentena, gold, metricas)
-# lidas DIRETO do LocalStack -- contagens + amostras. Autosservico: rode
-# `make visao` depois de qualquer passo e abra no navegador. Camada que
-# ainda nao existe aparece como "ainda nao gerada", nao como erro.
+"""Gera .out/visao-dados.html: as entradas e saidas de cada camada do lake.
+
+Pagina local com contagens + amostras de bronze, NRT, silver, quarentena,
+gold e metricas, lidas DIRETO do LocalStack. Autosservico: rode
+`make visao` depois de qualquer passo e abra no navegador. Camada que
+ainda nao existe aparece como "ainda nao gerada", nao como erro.
+"""
 import argparse
 import html
 from datetime import datetime, timezone
@@ -32,6 +34,7 @@ pre { background: #EEF2EE; border: 1px solid #DFE5DF; border-radius: .5rem; padd
 
 
 def build_spark(endpoint):
+    """Cria a SparkSession com a mesma configuracao S3A dos jobs do lake."""
     return (
         SparkSession.builder.appName("visao_dados")
         .config("spark.hadoop.fs.s3a.endpoint", endpoint)
@@ -48,6 +51,7 @@ def build_spark(endpoint):
 
 
 def tabela(rows, colunas):
+    """Renderiza Rows do Spark como tabela HTML com rolagem horizontal."""
     ths = "".join(f"<th>{html.escape(c)}</th>" for c in colunas)
     corpo = []
     for r in rows:
@@ -64,8 +68,12 @@ def tabela(rows, colunas):
             f'<tbody>{"".join(corpo)}</tbody></table></div>')
 
 
-# Cada secao tolera ausencia: caminho que nao existe = passo ainda nao feito.
 def secao(titulo, passo, fn):
+    """Monta uma secao da pagina tolerando ausencia da camada.
+
+    Caminho que nao existe = passo ainda nao feito: qualquer falha vira o
+    aviso "ainda nao gerada" com o passo que produz a camada, nao um erro.
+    """
     try:
         return f"<h2>{titulo}</h2>\n" + fn()
     except Exception as exc:  # noqa: BLE001 - qualquer falha vira aviso legivel
@@ -75,6 +83,7 @@ def secao(titulo, passo, fn):
 
 
 def main():
+    """Le cada camada, monta as secoes e grava a pagina HTML."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", default="evt-lakehouse")
     ap.add_argument("--endpoint", default="http://localstack:4566")

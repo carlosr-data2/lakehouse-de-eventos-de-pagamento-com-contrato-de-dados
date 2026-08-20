@@ -1,15 +1,22 @@
-# Simulador de CDC sem DMS: re-emite eventos JA EXISTENTES de um dt com
-# conteudo atualizado (status vira refunded, occurred_at avanca 1h) - o
-# formato de chegada de um upsert vindo de um CDC real (DMS/Debezium).
-# O ponto da demonstracao e que o pipeline NAO precisa mudar: a
-# deduplicacao do contrato (janela por event_id ordenada por occurred_at,
-# mantendo o mais recente) absorve o upsert por construcao. Rode o
-# bronze_to_silver de novo depois deste script e confira o status trocado.
-#
-# Por que nao DMS de verdade: o LocalStack community nao emula DMS. O
-# desenho completo com DMS -> S3 esta em docs/CDC-DMS.md; este script prova
-# a SEMANTICA (upsert por chave + ordenacao temporal), que e o que o
-# contrato precisa suportar - a ferramenta de captura e intercambiavel.
+"""Simulador de CDC sem DMS: re-emite eventos existentes como upserts.
+
+Re-emite eventos JA EXISTENTES de um dt com conteudo atualizado (status
+vira refunded, occurred_at avanca 1h) -- o formato de chegada de um upsert
+vindo de um CDC real (DMS/Debezium). O ponto da demonstracao e que o
+pipeline NAO precisa mudar: a deduplicacao do contrato (janela por
+event_id ordenada por occurred_at, mantendo o mais recente) absorve o
+upsert por construcao. Rode o bronze_to_silver de novo depois deste script
+e confira o status trocado.
+
+Por que nao DMS de verdade: o LocalStack community nao emula DMS. O
+desenho completo com DMS -> S3 esta em docs/CDC-DMS.md; este script prova
+a SEMANTICA (upsert por chave + ordenacao temporal), que e o que o
+contrato precisa suportar -- a ferramenta de captura e intercambiavel.
+
+Origem e destino:
+    s3://evt-lakehouse-bronze/events/dt={dt}/  (le o batch do dia e grava
+    cdc-updates-{hhmmss}.jsonl.gz ao lado)
+"""
 import argparse
 import gzip
 import io
@@ -22,6 +29,7 @@ PROJECT = "evt-lakehouse"
 
 
 def s3_client(endpoint):
+    """Cria o cliente S3 apontado para o endpoint dado (LocalStack ou AWS)."""
     return boto3.client(
         "s3",
         endpoint_url=endpoint,
@@ -31,10 +39,20 @@ def s3_client(endpoint):
     )
 
 
-# Le os primeiros eventos validos do arquivo batch do dia - sao eles que
-# vao "sofrer update". Validos porque evento quarentenado nao chegaria a
-# ter update legitimo na origem.
 def sample_events(s3, dt, quantidade):
+    """Le os primeiros eventos validos do arquivo batch do dia.
+
+    Sao eles que vao "sofrer update". Validos porque evento quarentenado
+    nao chegaria a ter update legitimo na origem.
+
+    Args:
+        s3: Cliente S3 de s3_client.
+        dt: Dia (YYYY-MM-DD) de onde amostrar.
+        quantidade: Maximo de eventos a retornar.
+
+    Returns:
+        Lista de eventos com event_id e occurred_at presentes.
+    """
     key = f"events/dt={dt}/events-{dt}.jsonl.gz"
     body = s3.get_object(Bucket=f"{PROJECT}-bronze", Key=key)["Body"].read()
     events = []
@@ -49,6 +67,7 @@ def sample_events(s3, dt, quantidade):
 
 
 def main():
+    """Gera e grava o lote de upserts CDC do dt pedido."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--dt", required=True)
     parser.add_argument("--quantidade", type=int, default=50)

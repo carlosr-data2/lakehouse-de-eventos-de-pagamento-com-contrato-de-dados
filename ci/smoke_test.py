@@ -1,3 +1,13 @@
+"""Teste de fumaca do CI: a infraestrutura provisionada esta de pe e responde?
+
+Roda apos o terraform apply do estagio integration (LocalStack) e verifica
+o essencial de cada plano: buckets criados, state machine registrada,
+Lambda respondendo (inclusive falhando do jeito esperado sem dado),
+caminho NRT existente e monitoramento no lugar. Cada verificacao acumula
+falhas numa lista; qualquer falha derruba o processo com exit code 1 -- e
+isso que reprova o job no CI.
+"""
+
 import argparse
 import json
 import sys
@@ -10,29 +20,33 @@ EXPECTED_BUCKETS = {f"{PROJECT}-{camada}" for camada in
 
 
 def client(service, endpoint):
+    """Cria o cliente boto3 do servico apontado para o LocalStack."""
     return boto3.client(service, endpoint_url=endpoint, region_name="us-east-1",
                         aws_access_key_id="test", aws_secret_access_key="test")
 
 
-# Verificacao 1: todos os buckets do lakehouse foram criados.
 def check_buckets(endpoint, failures):
+    """Verificacao 1: todos os buckets do lakehouse foram criados."""
     found = {b["Name"] for b in client("s3", endpoint).list_buckets()["Buckets"]}
     missing = EXPECTED_BUCKETS - found
     if missing:
         failures.append(f"buckets ausentes: {sorted(missing)}")
 
 
-# Verificacao 2: a maquina de estados existe com o nome esperado.
 def check_state_machine(endpoint, failures):
+    """Verificacao 2: a maquina de estados existe com o nome esperado."""
     sfn = client("stepfunctions", endpoint)
     names = {m["name"] for m in sfn.list_state_machines()["stateMachines"]}
     if f"{PROJECT}-daily-pipeline" not in names:
         failures.append("maquina de estados nao encontrada")
 
 
-# Verificacao 3: a Lambda responde e falha do jeito esperado quando nao ha
-# dado. Testar o caminho de erro tambem e parte do contrato do componente.
 def check_lambda(endpoint, failures):
+    """Verificacao 3: a Lambda responde -- e falha do jeito esperado sem dado.
+
+    Testar o caminho de erro tambem e parte do contrato do componente: o
+    validate_landing de um dt sem dado TEM que devolver LandingEmptyError.
+    """
     resp = client("lambda", endpoint).invoke(
         FunctionName=f"{PROJECT}-pipeline-ops",
         Payload=json.dumps({"action": "validate_landing",
@@ -43,10 +57,12 @@ def check_lambda(endpoint, failures):
         failures.append(f"lambda respondeu inesperado: {payload}")
 
 
-# Verificacao 4: o caminho NRT existe - stream de entrada e o Firehose que
-# entrega na bronze. Existencia apenas: entrega de fato e exercitada pelo
-# producer no passo correspondente, nao no smoke.
 def check_nrt(endpoint, failures):
+    """Verificacao 4: o caminho NRT existe (stream + Firehose para a bronze).
+
+    Existencia apenas: a entrega de fato e exercitada pelo producer no
+    passo correspondente, nao no smoke.
+    """
     streams = client("kinesis", endpoint).list_streams().get("StreamNames", [])
     if f"{PROJECT}-events-nrt" not in streams:
         failures.append("kinesis stream nrt nao encontrado")
@@ -55,14 +71,15 @@ def check_nrt(endpoint, failures):
         failures.append("firehose nrt nao encontrado")
 
 
-# Verificacao 5: monitoramento continuo - alarme de taxa de rejeicao e a
-# regra de agendamento diario apontando para a state machine.
-# Limite de emulador tratado como o ValidateStateMachineDefinition do
-# ADR-008: o cloudwatch do LocalStack 3.8 community responde 500 ao
-# DescribeAlarms mesmo com o alarme criado (PutMetricAlarm e DeleteAlarms
-# funcionam - o apply e o destroy provam). A leitura tolera o erro do
-# emulador com aviso; se a API responder e o recurso NAO existir, falha.
 def check_monitoring(endpoint, failures):
+    """Verificacao 5: alarme de reject_rate e agendamento diario no lugar.
+
+    Limite de emulador tratado como o ValidateStateMachineDefinition do
+    ADR-008: o cloudwatch do LocalStack 3.8 community responde 500 ao
+    DescribeAlarms mesmo com o alarme criado (PutMetricAlarm e DeleteAlarms
+    funcionam -- o apply e o destroy provam). A leitura tolera o erro do
+    emulador com aviso; se a API responder e o recurso NAO existir, falha.
+    """
     try:
         alarms = client("cloudwatch", endpoint).describe_alarms(
             AlarmNamePrefix=f"{PROJECT}-reject-rate-alto"
@@ -80,6 +97,7 @@ def check_monitoring(endpoint, failures):
 
 
 def main():
+    """Roda as cinco verificacoes e sai com 1 se qualquer uma falhou."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--endpoint", default="http://localhost:4566")
     args = parser.parse_args()

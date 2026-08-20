@@ -1,3 +1,17 @@
+"""Gerador de eventos sinteticos de pagamento para a camada bronze.
+
+Fabrica os dias de eventos com defeitos injetados de proposito (cada
+defeito mapeia para uma regra do contrato aplicado no bronze_to_silver) e
+duplicatas exatas (entrega "at least once" de broker), alem da dimensao de
+estabelecimentos usada no broadcast join da gold. Seed fixa por padrao:
+mesmos argumentos geram os mesmos eventos, o que torna reprocessos e
+comparacoes deterministicos.
+
+Destinos:
+    s3://evt-lakehouse-bronze/events/dt={dt}/events-{dt}.jsonl.gz
+    s3://evt-lakehouse-gold/dim_merchants/merchants.csv
+"""
+
 import argparse
 import csv
 import gzip
@@ -17,9 +31,12 @@ CHANNELS = ["app", "web", "pos"]
 CATEGORIES = ["varejo", "alimentacao", "servicos", "viagem", "saude"]
 
 
-# Cliente S3 apontado para o LocalStack. Endpoint parametrizavel para que o
-# mesmo script rode contra AWS real trocando um argumento.
 def s3_client(endpoint):
+    """Cria o cliente S3 apontado para o endpoint dado.
+
+    Endpoint parametrizavel para que o mesmo script rode contra o
+    LocalStack ou a AWS real trocando um argumento.
+    """
     return boto3.client(
         "s3",
         endpoint_url=endpoint,
@@ -29,8 +46,17 @@ def s3_client(endpoint):
     )
 
 
-# Evento valido "limpo". Base sobre a qual os defeitos serao injetados.
 def clean_event(rng, dt, merchant_ids):
+    """Gera um evento valido "limpo", base sobre a qual defeitos sao injetados.
+
+    Args:
+        rng: Gerador random.Random com seed controlada.
+        dt: Dia (YYYY-MM-DD) dentro do qual o occurred_at e sorteado.
+        merchant_ids: Universo de estabelecimentos possiveis.
+
+    Returns:
+        Dict no formato de chegada da bronze (RAW_SCHEMA do contrato).
+    """
     base = datetime.fromisoformat(dt).replace(tzinfo=timezone.utc)
     occurred = base + timedelta(seconds=rng.randint(0, 86399))
     return {
@@ -46,9 +72,20 @@ def clean_event(rng, dt, merchant_ids):
     }
 
 
-# Injeta defeitos com probabilidade fixa. Cada defeito mapeia para uma regra
-# do contrato de dados que sera aplicada no passo 4.
 def corrupt(event, rng):
+    """Injeta no evento, com probabilidade fixa, um defeito de cada familia.
+
+    Cada defeito mapeia para uma regra do contrato de dados
+    (amount_invalido, moeda_fora_dominio, timestamp_invalido,
+    customer_id_nulo); a maioria dos eventos sai intacta.
+
+    Args:
+        event: Evento gerado por clean_event (mutado in place).
+        rng: Gerador random.Random com seed controlada.
+
+    Returns:
+        O mesmo evento, possivelmente corrompido.
+    """
     roll = rng.random()
     if roll < 0.020:
         event["amount_cents"] = rng.choice([None, -rng.randint(100, 5000)])
@@ -61,9 +98,22 @@ def corrupt(event, rng):
     return event
 
 
-# Monta a lista completa do dia: eventos limpos, corrompidos e duplicatas
-# exatas (simulando entrega "at least once" de um broker).
 def build_day(rng, dt, merchant_ids, volume):
+    """Monta a lista completa de eventos de um dia.
+
+    Eventos limpos, corrompidos e ~3% de duplicatas exatas embaralhadas
+    (simulando a entrega "at least once" de um broker) -- e o que exercita
+    a deduplicacao do contrato.
+
+    Args:
+        rng: Gerador random.Random com seed controlada.
+        dt: Dia (YYYY-MM-DD) sendo gerado.
+        merchant_ids: Universo de estabelecimentos possiveis.
+        volume: Quantidade de eventos antes das duplicatas.
+
+    Returns:
+        Lista de eventos do dia, em ordem aleatoria.
+    """
     events = [corrupt(clean_event(rng, dt, merchant_ids), rng) for _ in range(volume)]
     duplicates = [dict(e) for e in rng.sample(events, k=int(volume * 0.03))]
     events.extend(duplicates)
@@ -71,9 +121,20 @@ def build_day(rng, dt, merchant_ids, volume):
     return events
 
 
-# Serializa em JSON Lines + gzip em memoria e envia num unico PutObject.
-# Bronze guarda o formato de chegada, sem conversao colunar.
 def upload_day(s3, dt, events):
+    """Serializa o dia em JSON Lines + gzip em memoria e envia num PutObject.
+
+    Bronze guarda o formato de chegada, sem conversao colunar -- a
+    conversao para Parquet e papel do silver.
+
+    Args:
+        s3: Cliente S3 de s3_client.
+        dt: Dia (YYYY-MM-DD) sendo gravado.
+        events: Lista de eventos de build_day.
+
+    Returns:
+        Tupla (chave do objeto, total de eventos gravados).
+    """
     buffer = io.BytesIO()
     with gzip.GzipFile(fileobj=buffer, mode="wb") as gz:
         for event in events:
@@ -83,11 +144,18 @@ def upload_day(s3, dt, events):
     return key, len(events)
 
 
-# Dimensao de estabelecimentos: tabela pequena, ideal para broadcast join
-# na camada gold. Vai direto para o bucket gold -- e dado de consumo
-# analitico, nao artefato de deploy nem evento bruto, entao nem bronze
-# nem artifacts fazem sentido aqui.
 def upload_merchants(s3, merchant_ids, rng):
+    """Gera e envia a dimensao de estabelecimentos (CSV com header).
+
+    Tabela pequena, ideal para o broadcast join na camada gold. Vai direto
+    para o bucket gold -- e dado de consumo analitico, nao artefato de
+    deploy nem evento bruto, entao nem bronze nem artifacts fazem sentido.
+
+    Args:
+        s3: Cliente S3 de s3_client.
+        merchant_ids: Universo de estabelecimentos.
+        rng: Gerador random.Random com seed controlada.
+    """
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(["merchant_id", "merchant_name", "category", "state"])
@@ -106,6 +174,7 @@ def upload_merchants(s3, merchant_ids, rng):
 
 
 def main():
+    """Gera a dimensao e um arquivo de eventos por data pedida."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--dates", nargs="+", required=True)
     parser.add_argument("--volume", type=int, default=40000)

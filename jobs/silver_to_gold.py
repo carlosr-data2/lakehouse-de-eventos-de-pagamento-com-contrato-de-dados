@@ -1,12 +1,37 @@
+"""Job silver -> gold: o agregado diario merchant_daily.
+
+Le a janela deslizante do silver (o dt alvo + N dias anteriores, historico
+de que as funcoes de janela precisam), junta a dimensao de estabelecimentos
+via broadcast e materializa o agregado de negocio do dia com o SQL
+analitico de GOLD_SQL (CTEs, FILTER, ranking e LAG).
+
+Origens:
+    s3://{project}-silver/events/dt={dt}/   (janela de lookback+1 dias)
+    s3://{project}-gold/dim_merchants/merchants.csv
+
+Destinos:
+    s3://{project}-gold/merchant_daily/     (Parquet particionado por dt)
+    s3://{project}-artifacts/metrics/gold/dt={dt}/  (JSON, plano de controle)
+"""
+
 import argparse
 from datetime import datetime, timedelta, timezone
 
 from pyspark.sql import SparkSession
 
 
-# Mesma configuracao S3A do estagio anterior. AQE ligado para coalescer
-# particoes de shuffle automaticamente apos as agregacoes.
 def build_spark(endpoint: str) -> SparkSession:
+    """Cria a SparkSession com a mesma configuracao S3A do estagio anterior.
+
+    AQE com coalescePartitions ligado para coalescer particoes de shuffle
+    automaticamente apos as agregacoes.
+
+    Args:
+        endpoint: URL do S3 (LocalStack no ciclo local).
+
+    Returns:
+        SparkSession pronta para ler e escrever no lake.
+    """
     return (
         SparkSession.builder.appName("silver_to_gold")
         .config("spark.hadoop.fs.s3a.endpoint", endpoint)
@@ -25,9 +50,20 @@ def build_spark(endpoint: str) -> SparkSession:
     )
 
 
-# Janela deslizante: le apenas o dt alvo e os N dias anteriores. Ler o silver
-# inteiro daria o mesmo resultado com custo crescendo junto com o historico.
 def window_dates(dt: str, lookback: int):
+    """Lista as datas da janela deslizante: o dt alvo e os N anteriores.
+
+    O job le apenas essa janela porque o LAG por merchant do GOLD_SQL so
+    precisa do historico imediato; ler o silver inteiro daria o mesmo
+    resultado com custo crescendo junto com o historico.
+
+    Args:
+        dt: Data alvo no formato YYYY-MM-DD.
+        lookback: Quantos dias anteriores incluir na leitura.
+
+    Returns:
+        Lista de datas ISO, da mais recente para a mais antiga.
+    """
     base = datetime.fromisoformat(dt).date()
     return [(base - timedelta(days=i)).isoformat() for i in range(lookback + 1)]
 
@@ -110,6 +146,7 @@ SELECT * FROM final WHERE dt = '{target_dt}'
 
 
 def main():
+    """Executa o estagio gold de um dt: janela, broadcast, SQL e escrita."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--dt", required=True)
     parser.add_argument("--lookback", type=int, default=2)

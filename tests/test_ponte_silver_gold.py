@@ -1,16 +1,17 @@
-# Teste de PONTE silver->gold: o unico da suite que ATRAVESSA camadas.
-#
-# Os unitarios por camada tem um ponto cego deliberado: o do contrato
-# fabrica entrada crua e para no silver; o da gold fabrica um silver
-# proprio e para na gold. Renomear uma coluna em shape_silver deixa os
-# DOIS verdes -- e quebra o job real em producao. Este teste liga as
-# pontas: passa dado fabricado PELO contrato e entrega o resultado real
-# dele ao GOLD_SQL. Deriva de schema entre as camadas falha AQUI, em
-# segundos, nao no pipeline rodando de madrugada.
-#
-# (Experimento que motivou o teste: mude o alias "amount" em shape_silver
-# e rode a suite -- so este teste cai, com UNRESOLVED_COLUMN apontando a
-# coluna que a gold consome e o contrato parou de entregar.)
+"""Teste de PONTE silver->gold: o unico da suite que ATRAVESSA camadas.
+
+Os unitarios por camada tem um ponto cego deliberado: o do contrato
+fabrica entrada crua e para no silver; o da gold fabrica um silver
+proprio e para na gold. Renomear uma coluna em shape_silver deixa os
+DOIS verdes -- e quebra o job real em producao. Este teste liga as
+pontas: passa dado fabricado PELO contrato e entrega o resultado real
+dele ao GOLD_SQL. Deriva de schema entre as camadas falha AQUI, em
+segundos, nao no pipeline rodando de madrugada.
+
+(Experimento que motivou o teste: mude o alias "amount" em shape_silver
+e rode a suite -- so este teste cai, com UNRESOLVED_COLUMN apontando a
+coluna que a gold consome e o contrato parou de entregar.)
+"""
 import sys
 from pathlib import Path
 
@@ -34,6 +35,7 @@ ANTERIOR = "2026-07-01"
 
 @pytest.fixture(scope="session")
 def spark():
+    """SparkSession local reutilizada por toda a sessao de teste."""
     session = (
         SparkSession.builder.master("local[2]")
         .appName("tests-ponte")
@@ -52,6 +54,7 @@ COLS = ["event_id", "occurred_at", "customer_id", "merchant_id",
 
 
 def _evento(**kwargs):
+    """Linha crua perfeita; cada caso sabota so o campo que quer exercitar."""
     base = {
         "event_id": "e1", "occurred_at": f"{TARGET}T10:00:00", "customer_id": "cus_1",
         "merchant_id": "m1", "payment_method": "pix", "currency": "BRL",
@@ -62,6 +65,7 @@ def _evento(**kwargs):
 
 
 def raw_df(spark, rows):
+    """Monta o DataFrame cru todo string, como no RAW_SCHEMA do contrato."""
     return spark.createDataFrame(
         [tuple(str(r[c]) if r[c] is not None else None for c in COLS) for r in rows],
         schema=COLS,
@@ -69,6 +73,13 @@ def raw_df(spark, rows):
 
 
 def test_o_que_o_contrato_entrega_e_o_que_a_gold_consome(spark):
+    """Roda contrato -> shape_silver -> GOLD_SQL de ponta a ponta em memoria.
+
+    Dois dias fabricados atravessam o contrato real; o silver resultante
+    alimenta o GOLD_SQL real. Quarentena, agregados, LAG e variacao sao
+    conferidos no resultado final -- deriva de schema entre camadas falha
+    aqui.
+    """
     dias = {
         ANTERIOR: [
             _evento(event_id="a1", occurred_at=f"{ANTERIOR}T09:00:00"),
