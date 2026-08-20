@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: stg_merchant_daily
+    description: Staging 1-pra-1 da gold, com chave explicita.
+    columns:
+      - name: chave_merchant_dia
+        tests: [unique, not_null]
+      - name: category
+        tests:
+          - accepted_values:
+              # As MESMAS categorias do gerador (ingest/generate_events.py):
+              # o teste de dados amarrado ao contrato, nao lista inventada.
+              values: ["varejo", "alimentacao", "servicos", "viagem", "saude"]
+      - name: taxa_aprovacao
+        tests:
+          - entre:
+              minimo: 0
+              maximo: 1
+      - name: share_pix
+        tests:
+          - entre:
+              minimo: 0
+              maximo: 1
+
+  - name: mart_categoria_diaria
+    description: Agregado diario por categoria (table + ANALYZE).
+    columns:
+      - name: gmv_aprovado
+        tests: [not_null]
+
+  - name: mart_merchant_kpis
+    description: KPIs por merchant/dia (incremental, unique_key).
+    columns:
+      - name: chave_merchant_dia
+        tests: [unique, not_null]

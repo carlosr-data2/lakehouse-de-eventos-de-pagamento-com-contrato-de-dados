@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/carlosr-data2/lakehouse-de-eventos-de-pagamento-com-contrato-de-dados/actions/workflows/ci.yml/badge.svg)](https://github.com/carlosr-data2/lakehouse-de-eventos-de-pagamento-com-contrato-de-dados/actions/workflows/ci.yml)
 
-Pipeline de dados ponta a ponta construído a partir dos requisitos de uma vaga real de **Engenheiro de Dados Sênior**: arquitetura medallion (bronze/silver/gold) com quarentena, contrato de dados explícito, processamento em PySpark, orquestração serverless com Step Functions e CI em três estágios — tudo rodando **100% local e sem custo** via LocalStack, com o mesmo Terraform que subiria na AWS real.
+Pipeline de dados ponta a ponta construído a partir dos requisitos de uma vaga real de **Engenheiro de Dados Sênior**: arquitetura medallion (bronze/silver/gold) com quarentena, contrato de dados explícito, processamento em PySpark, orquestração serverless com Step Functions e CI em quatro estágios — tudo rodando **100% local e sem custo** via LocalStack, com o mesmo Terraform que subiria na AWS real.
 
 ## O que este projeto demonstra
 
@@ -90,6 +90,7 @@ flowchart LR
 | Step Functions para orquestração | Airflow | Pipeline AWS-nativo com retry/backoff declarativo e zero infra pra manter; a comparação concreta está em [`airflow/dag_evt_lakehouse.py`](airflow/dag_evt_lakehouse.py) |
 | Quarentena como área de primeira classe | Descartar/corrigir reprovados em silêncio | Dado descartado silenciosamente é o jeito mais rápido de perder confiança no lakehouse |
 | LocalStack para todo o ciclo local e CI | Conta AWS de desenvolvimento | Ambiente descartável, idêntico na forma dos recursos, custo zero, feedback em segundos |
+| dbt no warehouse de serving, não no lake | dbt-spark/dbt-athena sobre o S3 | pytest testa código Spark; dbt testa modelos SQL no warehouse — a modelagem de consumo ganha deploy, testes e linhagem sem reescrever o contrato ([`dbt/`](dbt/)) |
 
 A justificativa completa de cada decisão — contexto, alternativas rejeitadas e consequências — está em [`docs/DECISOES.md`](docs/DECISOES.md).
 
@@ -102,6 +103,7 @@ ingest/      Gerador de eventos sintéticos e ingestão na camada bronze
 jobs/        Jobs PySpark (bronze→silver com contrato/quarentena, silver→gold) — funções puras, testáveis
 tests/       Testes unitários do contrato de dados (pytest, SparkSession local, sem infra)
 sql/         Consultas de validação e DDL de exposição para Redshift
+dbt/         Analytics engineering sobre o Postgres de serving: modelos, testes e linhagem (ADR-009)
 airflow/     DAG equivalente à máquina de estados, para comparação
 ci/          Smoke test executado contra a infraestrutura provisionada no CI
 docs/        Roteiro completo de construção, com teoria e código comentado
@@ -123,20 +125,26 @@ make pipeline
 # 3. Testes unitários do contrato (não precisam de infra)
 make test
 
-# 4. Conferir os recursos criados
+# 4. Camada analítica (opcional): gold num Postgres local + modelos dbt
+make gold-pg                   # materializa a gold no container gold-pg (porta 5433)
+pip install dbt-postgres       # uma vez, no venv do projeto
+make dbt                       # dbt run + dbt test sobre o serving
+
+# 5. Conferir os recursos criados
 cd infra && terraform state list | grep -v '^data\.' | wc -l   # deve mostrar 17
 
-# 5. Desmontar tudo
+# 6. Desmontar tudo
 make destroy
 ```
 
 ## Testes e CI
 
-O workflow ([`ci.yml`](.github/workflows/ci.yml)) roda em três estágios, do mais barato pro mais caro — a anatomia completa, as decisões (versões pinadas, socket do Docker no LocalStack, destroy garantido) e como reproduzir cada estágio localmente estão em [`docs/CI.md`](docs/CI.md):
+O workflow ([`ci.yml`](.github/workflows/ci.yml)) roda em quatro estágios, do mais barato pro mais caro — a anatomia completa, as decisões (versões pinadas, socket do Docker no LocalStack, destroy garantido) e como reproduzir cada estágio localmente estão em [`docs/CI.md`](docs/CI.md):
 
 1. **static** — `terraform fmt`/`validate` + `ruff` (segundos, pega erro trivial antes de subir qualquer coisa).
 2. **unit** — pytest do contrato de dados com SparkSession local, sem infraestrutura.
-3. **integration** — LocalStack como service container, `terraform apply` de verdade e smoke test, com `terraform destroy` garantido via `if: always()`.
+3. **dbt** (paralelo ao unit) — Postgres como service container no papel do gold-pg, gold mínima semeada ([`ci/seed_gold_pg.sql`](ci/seed_gold_pg.sql)) e `dbt run` + `dbt test` numa máquina limpa.
+4. **integration** — LocalStack como service container, `terraform apply` de verdade e smoke test, com `terraform destroy` garantido via `if: always()`.
 
 ## Limitações assumidas
 

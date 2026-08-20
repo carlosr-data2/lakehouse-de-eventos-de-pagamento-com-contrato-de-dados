@@ -1,4 +1,4 @@
-.PHONY: up down fmt validate test apply ingest silver gold pipeline smoke destroy retomar nrt cdc gold-pg visao
+.PHONY: up down fmt validate test apply ingest silver gold pipeline smoke destroy retomar nrt cdc gold-pg visao dbt
 
 DATES ?= 2026-07-01 2026-07-02 2026-07-03
 ENDPOINT ?= http://localhost:4566
@@ -66,6 +66,14 @@ cdc:
 # Materializa a gold num Postgres local e roda validacao + EXPLAIN ANALYZE
 gold-pg:
 	bash scripts/redshift_pg/rodar_gold_pg.sh $(word 2,$(DATES))
+
+# Camada de analytics engineering (dbt/ -- ver ADR-009): modelos, testes e
+# linhagem sobre o Postgres do gold-pg. Pre-requisitos: make gold-pg (o
+# serving de pe e carregado) e dbt no venv (pip install dbt-postgres).
+# .PHONY obrigatorio: sem ele o make acha que o alvo "dbt" e a pasta dbt/
+# e responde "up to date" sem rodar nada.
+dbt:
+	cd dbt && dbt run && dbt test
 
 # Autosservico: gera .out/visao-dados.html com contagens + amostras de TODAS
 # as camadas (bronze, NRT, silver, quarentena, gold, metricas) lidas do

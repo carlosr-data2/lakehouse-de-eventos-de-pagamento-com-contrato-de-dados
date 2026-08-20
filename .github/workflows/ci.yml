@@ -66,6 +66,43 @@ jobs:
           pip install pyspark==3.5.1 pytest
           python -m pytest tests -q
 
+  # Estagio 2b (paralelo ao unit): camada de analytics engineering. O
+  # Postgres como service container faz o papel do gold-pg do ciclo local
+  # (mesma porta publicada e mesma senha de laboratorio), o seed fabrica
+  # uma gold minima deterministica e o dbt materializa e testa os modelos
+  # numa maquina limpa -- modelos SQL tambem sao software.
+  dbt:
+    runs-on: ubuntu-latest
+    needs: static
+    services:
+      postgres:
+        image: postgres:16
+        ports: ["5433:5432"]
+        env:
+          POSTGRES_PASSWORD: gold
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: seed da gold minima
+        env:
+          PGPASSWORD: gold
+        run: |
+          psql -h localhost -p 5433 -U postgres -v ON_ERROR_STOP=1 -f scripts/redshift_pg/ddl_postgres.sql
+          psql -h localhost -p 5433 -U postgres -v ON_ERROR_STOP=1 -f ci/seed_gold_pg.sql
+      - name: dbt run + test
+        # Pinning por serie minor (~=): mesma filosofia das outras versoes
+        # pinadas, sem congelar um micro que pode sair do indice.
+        run: |
+          pip install "dbt-core~=1.10.0" "dbt-postgres~=1.9.0"
+          cd dbt && dbt run && dbt test
+
   # Estagio 3: integracao real. LocalStack como service container, Terraform
   # aplicado de verdade e teste de fumaca. E o que prova que a infra sobe.
   integration:
