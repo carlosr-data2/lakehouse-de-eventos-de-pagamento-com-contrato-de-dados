@@ -1,3 +1,12 @@
+"""Contrato de dados bronze -> silver: as regras que separam valido de rejeitado.
+
+Funcoes puras de DataFrame -> DataFrame, sem I/O e sem SparkSession propria:
+quem le e escreve e o job (bronze_to_silver.py), o que permite testar cada
+regra com dado fabricado em memoria (tests/test_contract.py). Ordem de
+aplicacao no job: cast_types -> deduplicate -> apply_contract ->
+split_valid_quarantine -> shape_silver.
+"""
+
 from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
@@ -20,19 +29,41 @@ RAW_SCHEMA = StructType([
 ])
 
 
-# Conversao tipada com try_cast (via expressao SQL -- a funcao so existe no
-# modulo Python a partir do PySpark 4): valor invalido vira NULL em vez de
-# derrubar o job. O NULL resultante e capturado depois pelas regras do contrato.
 def cast_types(df: DataFrame) -> DataFrame:
+    """Converte amount_cents e occurred_at para tipos fortes, tolerando lixo.
+
+    Usa try_cast via expressao SQL (a funcao so existe no modulo Python a
+    partir do PySpark 4): valor invalido vira NULL em vez de derrubar o job.
+    O NULL resultante e capturado depois pelas regras de apply_contract.
+
+    Args:
+        df: DataFrame bruto com as colunas string do RAW_SCHEMA.
+
+    Returns:
+        DataFrame com as colunas derivadas amount_cents_typed (long) e
+        occurred_at_typed (timestamp).
+    """
     return (
         df.withColumn("amount_cents_typed", F.expr("try_cast(amount_cents AS long)"))
           .withColumn("occurred_at_typed", F.to_timestamp("occurred_at"))
     )
 
 
-# Deduplicacao deterministica: entre eventos com o mesmo id, mantem o de
-# occurred_at mais recente. dropDuplicates manteria um registro arbitrario.
 def deduplicate(df: DataFrame) -> DataFrame:
+    """Remove duplicatas de event_id de forma deterministica.
+
+    Entre eventos com o mesmo id, mantem o de occurred_at mais recente
+    (janela por event_id ordenada por occurred_at_typed desc);
+    dropDuplicates manteria um registro arbitrario. E essa ordenacao
+    temporal que tambem absorve o upsert do CDC sem mudanca no pipeline
+    (ver ingest/generate_cdc_updates.py).
+
+    Args:
+        df: DataFrame ja tipado por cast_types.
+
+    Returns:
+        DataFrame com uma linha por event_id.
+    """
     window = Window.partitionBy("event_id").orderBy(
         F.col("occurred_at_typed").desc_nulls_last()
     )
@@ -43,9 +74,19 @@ def deduplicate(df: DataFrame) -> DataFrame:
     )
 
 
-# Aplica as seis regras e acumula TODOS os motivos de rejeicao num array.
-# Guardar so o primeiro motivo destruiria informacao de diagnostico.
 def apply_contract(df: DataFrame) -> DataFrame:
+    """Avalia as seis regras do contrato e anota os motivos de rejeicao.
+
+    Acumula TODOS os motivos violados num array: guardar so o primeiro
+    destruiria informacao de diagnostico -- quem conserta a origem precisa
+    da lista completa.
+
+    Args:
+        df: DataFrame tipado (e, no pipeline, ja deduplicado).
+
+    Returns:
+        DataFrame com a coluna rejection_reasons (array vazio = valido).
+    """
     reasons = F.array_compact(F.array(
         F.when(F.col("event_id").isNull(), F.lit("event_id_nulo")),
         F.when(F.col("customer_id").isNull(), F.lit("customer_id_nulo")),
@@ -60,17 +101,38 @@ def apply_contract(df: DataFrame) -> DataFrame:
     return df.withColumn("rejection_reasons", reasons)
 
 
-# Separa aprovados de reprovados. Nada e descartado: o rejeitado vai para a
-# quarentena com o motivo, para que a origem possa ser cobrada com evidencia.
 def split_valid_quarantine(df: DataFrame):
+    """Separa aprovados de reprovados pelo array de motivos.
+
+    Nada e descartado: o rejeitado vai para a quarentena com o motivo,
+    para que a origem possa ser cobrada com evidencia.
+
+    Args:
+        df: DataFrame com a coluna rejection_reasons de apply_contract.
+
+    Returns:
+        Tupla (validos, quarentena), nesta ordem.
+    """
     valid = df.filter(F.size("rejection_reasons") == 0)
     quarantine = df.filter(F.size("rejection_reasons") > 0)
     return valid, quarantine
 
 
-# Modelagem final do silver: nomes de negocio, tipos corretos, colunas
-# derivadas uteis e metadados tecnicos de linhagem.
 def shape_silver(df: DataFrame, dt: str, run_ts: str) -> DataFrame:
+    """Modela o registro final do silver.
+
+    Nomes de negocio, tipos corretos, colunas derivadas uteis (amount em
+    decimal, occurred_hour) e metadados tecnicos de linhagem (_ingested_at,
+    _source_job e a coluna de particao dt).
+
+    Args:
+        df: DataFrame de eventos validos.
+        dt: Particao (YYYY-MM-DD) sendo processada.
+        run_ts: Timestamp ISO da execucao, gravado em _ingested_at.
+
+    Returns:
+        DataFrame pronto para a escrita particionada por dt.
+    """
     return df.select(
         F.col("event_id"),
         F.col("occurred_at_typed").alias("occurred_at"),

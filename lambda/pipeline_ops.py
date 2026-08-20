@@ -1,3 +1,18 @@
+"""Plano de controle do pipeline: a Lambda unica das acoes da state machine.
+
+Nenhum dado passa por aqui (quem processa e o Spark); a Lambda so valida
+pre-condicoes, registra checkpoints e decide o portao de qualidade. O
+campo "action" do payload escolhe a acao:
+
+* validate_landing: a particao do dia chegou na bronze?
+* checkpoint_stage: o estagio produziu saida? Persiste metricas no
+  DynamoDB e publica a serie temporal no CloudWatch.
+* quality_gate: taxa de rejeicao do silver dentro do limite?
+
+Configuracao via ambiente: PROJECT, METRICS_TABLE, MAX_REJECT_RATE
+(limite do gate, default 0.05) e AWS_REGION.
+"""
+
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -27,20 +42,26 @@ class StageOutputMissingError(Exception):
     pass
 
 
-# Dentro do LocalStack a Lambda enxerga o emulador pelo hostname injetado
-# em LOCALSTACK_HOSTNAME. Na AWS real a variavel nao existe e o boto3
-# resolve o endpoint padrao - o mesmo codigo serve para os dois ambientes.
 def _client(service):
+    """Cria o cliente boto3 certo para o ambiente em que a Lambda roda.
+
+    Dentro do LocalStack a Lambda enxerga o emulador pelo hostname injetado
+    em LOCALSTACK_HOSTNAME. Na AWS real a variavel nao existe e o boto3
+    resolve o endpoint padrao -- o mesmo codigo serve para os dois
+    ambientes.
+    """
     host = os.environ.get("LOCALSTACK_HOSTNAME")
     if host:
         return boto3.client(service, endpoint_url=f"http://{host}:4566", region_name=REGION)
     return boto3.client(service, region_name=REGION)
 
 
-# Conta objetos sob um prefixo usando paginacao. list_objects_v2 devolve no
-# maximo 1000 chaves por chamada; sem paginator a contagem fica errada em
-# particao grande.
 def _count_objects(bucket, prefix):
+    """Conta objetos sob um prefixo usando paginacao.
+
+    list_objects_v2 devolve no maximo 1000 chaves por chamada; sem
+    paginator a contagem ficaria errada em particao grande.
+    """
     s3 = _client("s3")
     total = 0
     for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
@@ -48,10 +69,15 @@ def _count_objects(bucket, prefix):
     return total
 
 
-# Le o arquivo de metricas que o job Spark escreveu. O Spark grava um
-# diretorio com part-*.json, entao localizamos a primeira chave .json
-# em vez de assumir um nome fixo.
 def _read_stage_metrics(stage, dt):
+    """Le o arquivo de metricas que o job Spark escreveu para o estagio.
+
+    O Spark grava um diretorio com part-*.json, entao localizamos a
+    primeira chave .json em vez de assumir um nome fixo.
+
+    Returns:
+        Dict de metricas do estagio, ou {} se ainda nao ha arquivo.
+    """
     s3 = _client("s3")
     bucket = f"{PROJECT}-artifacts"
     prefix = f"metrics/{stage}/dt={dt}/"
@@ -63,11 +89,17 @@ def _read_stage_metrics(stage, dt):
     return {}
 
 
-# Publica metricas custom no CloudWatch - a serie temporal que o alarme de
-# monitoring.tf observa. Best-effort de proposito: metrica indisponivel nao
-# pode derrubar o pipeline (o dado dela ja esta no DynamoDB de qualquer
-# forma); a falha vai pro log e a execucao segue.
 def _publish_metrics(dimensions, values):
+    """Publica metricas custom no CloudWatch (serie que o alarme observa).
+
+    Best-effort de proposito: metrica indisponivel nao pode derrubar o
+    pipeline (o dado dela ja esta no DynamoDB de qualquer forma); a falha
+    vai pro log e a execucao segue.
+
+    Args:
+        dimensions: Dimensoes CloudWatch, como {"Stage": "silver"}.
+        values: Mapa nome da metrica -> valor numerico.
+    """
     try:
         _client("cloudwatch").put_metric_data(
             Namespace=f"{PROJECT}/pipeline",
@@ -87,12 +119,25 @@ def _publish_metrics(dimensions, values):
         print(f"[metrics] falha ao publicar no CloudWatch: {exc}")
 
 
-# Acao 1: valida se a particao do dia chegou no bronze. E a pre-condicao do
-# pipeline inteiro - falhar cedo aqui evita queimar recurso de cluster.
-# dt="auto" (ou ausente) resolve para D-1 em UTC: e assim que o agendamento
-# do EventBridge dispara sem saber aritmetica de data - os estados seguintes
-# leem o dt resolvido daqui ($.landing.dt), nao do input.
 def validate_landing(event):
+    """Acao 1: valida se a particao do dia chegou na bronze.
+
+    E a pre-condicao do pipeline inteiro -- falhar cedo aqui evita queimar
+    recurso de cluster. dt="auto" (ou ausente) resolve para D-1 em UTC: e
+    assim que o agendamento do EventBridge dispara sem saber aritmetica de
+    data -- os estados seguintes leem o dt resolvido daqui ($.landing.dt),
+    nao do input.
+
+    Args:
+        event: Payload com dt opcional (YYYY-MM-DD, "auto" ou ausente).
+
+    Returns:
+        Dict com o dt resolvido e a contagem de objetos na landing.
+
+    Raises:
+        LandingEmptyError: Se nao ha nenhum arquivo na particao -- o Step
+            Functions faz Retry/Catch por este nome de classe.
+    """
     dt = event.get("dt")
     if not dt or dt == "auto":
         dt = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
@@ -104,9 +149,23 @@ def validate_landing(event):
     return {"dt": dt, "landing_objects": count}
 
 
-# Acao 2: confirma que o estagio produziu saida, le as metricas dele e
-# persiste no DynamoDB. Se a saida nao existe, lanca erro retentavel.
 def checkpoint_stage(event):
+    """Acao 2: confirma a saida do estagio e persiste o checkpoint.
+
+    Confere que o estagio produziu objetos no bucket esperado, le as
+    metricas que o job publicou e grava tudo no DynamoDB; depois publica a
+    serie temporal no CloudWatch.
+
+    Args:
+        event: Payload com dt, stage ("silver"/"gold") e run_id.
+
+    Returns:
+        Dict com o estagio, a contagem de objetos e as metricas lidas.
+
+    Raises:
+        StageOutputMissingError: Se o estagio nao produziu saida -- erro
+            retentavel na politica do Step Functions.
+    """
     dt, stage, run_id = event["dt"], event["stage"], event["run_id"]
     bucket, root = STAGE_OUTPUT[stage]
     prefix = f"{root}/dt={dt}/"
@@ -141,10 +200,19 @@ def checkpoint_stage(event):
     return {"stage": stage, "output_objects": count, "metrics": metrics}
 
 
-# Acao 3: portao de qualidade. Le todas as metricas da execucao e compara a
-# taxa de rejeicao do silver contra o limite. Retorna PASS/FAIL e a mensagem
-# que sera publicada no SNS.
 def quality_gate(event):
+    """Acao 3: portao de qualidade da execucao.
+
+    Le as metricas da execucao no DynamoDB e compara a taxa de rejeicao do
+    silver contra MAX_REJECT_RATE.
+
+    Args:
+        event: Payload com run_id e dt.
+
+    Returns:
+        Dict com status PASS/FAIL, a taxa, o limite e a mensagem que sera
+        publicada no SNS.
+    """
     run_id, dt = event["run_id"], event["dt"]
     resp = _client("dynamodb").query(
         TableName=METRICS_TABLE,
@@ -187,9 +255,15 @@ ACTIONS = {
 }
 
 
-# Despacho unico. Acao desconhecida vira erro explicito em vez de retorno
-# silencioso vazio, que seria muito pior de diagnosticar.
 def handler(event, context):
+    """Ponto de entrada da Lambda: despacha o payload para a acao pedida.
+
+    Acao desconhecida vira erro explicito em vez de retorno silencioso
+    vazio, que seria muito pior de diagnosticar.
+
+    Raises:
+        ValueError: Se event["action"] nao esta em ACTIONS.
+    """
     action = event.get("action")
     if action not in ACTIONS:
         raise ValueError(f"Acao desconhecida: {action}")

@@ -1,13 +1,20 @@
-# Producer near real time: envia eventos (com os mesmos defeitos do gerador
-# batch) para o Kinesis Data Stream; o Firehose entrega na bronze sob
-# events_nrt/dt=.../ em micro lotes de ate 60s. Reusa clean_event/corrupt do
-# gerador batch de proposito - NRT e batch sao caminhos de ENTREGA
-# diferentes do mesmo dado, nao dados diferentes.
-#
-# A PartitionKey e o merchant_id - a mesma chave de negocio dos jobs. Com um
-# estabelecimento dominante isso concentraria trafego num shard so: o skew
-# do Passo 8, na versao streaming (hot shard). A escolha esta comentada
-# aqui porque ela e uma decisao, nao um default.
+"""Producer near real time: eventos para o Kinesis, entregues na bronze.
+
+Envia eventos (com os mesmos defeitos do gerador batch) para o Kinesis
+Data Stream; o Firehose entrega na bronze sob events_nrt/dt=.../ em micro
+lotes de ate 60s. Reusa clean_event/corrupt do gerador batch de proposito:
+NRT e batch sao caminhos de ENTREGA diferentes do mesmo dado, nao dados
+diferentes.
+
+A PartitionKey e o merchant_id -- a mesma chave de negocio dos jobs. Com
+um estabelecimento dominante isso concentraria trafego num shard so (hot
+shard, o skew em versao streaming). A escolha esta documentada aqui porque
+ela e uma decisao, nao um default.
+
+Destino:
+    Kinesis {PROJECT}-events-nrt -> Firehose ->
+    s3://{PROJECT}-bronze/events_nrt/dt={hoje}/
+"""
 import argparse
 import json
 import random
@@ -21,6 +28,7 @@ PROJECT = "evt-lakehouse"
 
 
 def kinesis_client(endpoint):
+    """Cria o cliente Kinesis apontado para o endpoint dado (LocalStack ou AWS)."""
     return boto3.client(
         "kinesis",
         endpoint_url=endpoint,
@@ -31,6 +39,7 @@ def kinesis_client(endpoint):
 
 
 def main():
+    """Envia N eventos ao stream, um a um, simulando chegada continua."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--eventos", type=int, default=200)
     parser.add_argument("--intervalo", type=float, default=0.05,

@@ -1,12 +1,15 @@
-# Estes testes guardam o GOLD_SQL desde ANTES do passo que executa o job:
-# unitario testa CODIGO com dado fabricado, nao o estado do lake -- rodam
-# verdes sem gold gerada, sem silver, sem LocalStack.
-#
-# E rodam JUNTO com os do contrato porque a suite e do repositorio, nao do
-# passo: pytest tests varre a pasta inteira -- a rede de regressao que
-# confere, a cada mudanca, tambem o que voce "nao tocou" (um ajuste no
-# contrato pode mudar coluna que a gold consome). Filtre com -k ou por
-# arquivo pra iterar; feche o trabalho com a suite inteira.
+"""Testes unitarios do GOLD_SQL: cada construcao do SQL analitico da gold.
+
+Guardam o GOLD_SQL desde ANTES do passo que executa o job: unitario testa
+CODIGO com dado fabricado, nao o estado do lake -- rodam verdes sem gold
+gerada, sem silver, sem LocalStack.
+
+E rodam JUNTO com os do contrato porque a suite e do repositorio, nao do
+passo: pytest tests varre a pasta inteira -- a rede de regressao que
+confere, a cada mudanca, tambem o que voce "nao tocou" (um ajuste no
+contrato pode mudar coluna que a gold consome). Filtre com -k ou por
+arquivo pra iterar; feche o trabalho com a suite inteira.
+"""
 import sys
 from pathlib import Path
 
@@ -23,6 +26,7 @@ ANTERIOR = "2026-07-01"
 
 @pytest.fixture(scope="session")
 def spark():
+    """SparkSession local reutilizada por toda a sessao de teste."""
     session = (
         SparkSession.builder.master("local[2]")
         .appName("tests-gold")
@@ -33,11 +37,14 @@ def spark():
     session.stop()
 
 
-# Cenario minimo que exercita cada construcao do GOLD_SQL: FILTER
-# condicional, ranking por categoria, LAG por merchant e o filtro de moeda.
-# m1 e m2 disputam a mesma categoria; m3 esta sozinho em outra; m1 tem
-# historico no dia anterior (LAG preenchido); a linha USD nao pode contar.
 def silver_view(spark):
+    """Cria a view silver_events com o cenario minimo do GOLD_SQL.
+
+    Exercita cada construcao: FILTER condicional, ranking por categoria,
+    LAG por merchant e o filtro de moeda. m1 e m2 disputam a mesma
+    categoria; m3 esta sozinho em outra; m1 tem historico no dia anterior
+    (LAG preenchido); a linha USD nao pode contar.
+    """
     rows = [
         # dt, merchant, customer, metodo, status, amount, moeda
         (ANTERIOR, "m1", "c01", "card", "approved", 100.0, "BRL"),
@@ -58,6 +65,7 @@ def silver_view(spark):
 
 
 def dim_view(spark):
+    """Cria a view dim_merchants minima para o broadcast join da gold."""
     rows = [
         ("m1", "Loja Um", "varejo", "SP"),
         ("m2", "Loja Dois", "varejo", "RJ"),
@@ -69,19 +77,21 @@ def dim_view(spark):
 
 @pytest.fixture(scope="session")
 def gold(spark):
+    """Executa o GOLD_SQL real sobre as views fabricadas, indexado por merchant."""
     silver_view(spark)
     dim_view(spark)
     result = spark.sql(GOLD_SQL.format(target_dt=TARGET)).collect()
     return {row["merchant_id"]: row.asDict() for row in result}
 
 
-# So os merchants do dt alvo saem - e a linha USD nao cria merchant extra.
 def test_apenas_dt_alvo_e_moeda_brl(gold):
+    """So os merchants do dt alvo saem; a linha USD nao cria merchant extra."""
     assert set(gold) == {"m1", "m2", "m3"}
     assert gold["m1"]["gmv_aprovado"] == 300.0  # USD 999 fora
 
 
 def test_agregados_e_estorno(gold):
+    """Contagens, GMV, estorno, taxa e ticket batem para o merchant m2."""
     m2 = gold["m2"]
     assert m2["tx_total"] == 3
     assert m2["tx_aprovadas"] == 2
@@ -91,18 +101,20 @@ def test_agregados_e_estorno(gold):
     assert m2["ticket_medio"] == 100.0
 
 
-# DENSE_RANK particionado por (dt, category): m1 e m2 disputam varejo;
-# m3, sozinho em servicos, tambem e rank 1.
 def test_rank_por_categoria(gold):
+    """DENSE_RANK por (dt, category): m1 e m2 disputam varejo; m3 e rank 1 sozinho."""
     assert gold["m1"]["rank_categoria"] == 1
     assert gold["m2"]["rank_categoria"] == 2
     assert gold["m3"]["rank_categoria"] == 1
 
 
-# LAG por merchant: m1 tem historico (variacao (300-100)/100 = 2.0);
-# m2 estreou hoje, entao dia anterior e variacao ficam nulos - e nulo
-# aqui e o comportamento certo, nao zero (zero mentiria "estavel").
 def test_variacao_contra_dia_anterior(gold):
+    """LAG por merchant: historico preenchido para m1, nulo para estreante.
+
+    m1 tem historico (variacao (300-100)/100 = 2.0); m2 estreou hoje,
+    entao dia anterior e variacao ficam nulos -- e nulo aqui e o
+    comportamento certo, nao zero (zero mentiria "estavel").
+    """
     m1 = gold["m1"]
     assert m1["gmv_dia_anterior"] == 100.0
     assert m1["variacao_gmv_pct"] == pytest.approx(2.0)
@@ -111,5 +123,6 @@ def test_variacao_contra_dia_anterior(gold):
 
 
 def test_share_pix(gold):
+    """share_pix e a fracao do GMV aprovado que entrou via pix."""
     assert gold["m3"]["share_pix"] == pytest.approx(1.0)
     assert gold["m1"]["share_pix"] == pytest.approx(0.0)

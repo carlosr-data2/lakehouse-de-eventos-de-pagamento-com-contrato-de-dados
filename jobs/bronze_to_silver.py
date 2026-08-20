@@ -1,3 +1,20 @@
+"""Job bronze -> silver: aplica o contrato de dados e roteia a quarentena.
+
+Le a particao do dia da bronze (JSON Lines gzip), roda o pipeline do
+contrato (tipagem -> deduplicacao -> regras -> separacao, ver contract.py)
+e escreve tres saidas: o silver modelado, a quarentena com os motivos de
+rejeicao e as metricas do estagio para o plano de controle.
+
+Origem:
+    s3://{project}-bronze/events/dt={dt}/
+
+Destinos:
+    s3://{project}-silver/events/          (Parquet particionado por dt)
+    s3://{project}-quarantine/events/      (Parquet, com rejection_reasons)
+    s3://{project}-artifacts/metrics/silver/dt={dt}/  (JSON lido pela
+        Lambda checkpoint_stage do plano de controle)
+"""
+
 import argparse
 from datetime import datetime, timezone
 
@@ -13,9 +30,19 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 
-# SparkSession configurada para falar S3A com o LocalStack. path.style.access
-# e obrigatorio; o provider de credencial simples evita busca por metadata.
 def build_spark(endpoint: str) -> SparkSession:
+    """Cria a SparkSession configurada para falar S3A com o LocalStack.
+
+    path.style.access e obrigatorio; o provider de credencial simples evita
+    busca por metadata de instancia. partitionOverwriteMode=dynamic limita
+    o overwrite as particoes efetivamente escritas pelo run.
+
+    Args:
+        endpoint: URL do S3 (LocalStack no ciclo local).
+
+    Returns:
+        SparkSession pronta para ler e escrever no lake.
+    """
     return (
         SparkSession.builder.appName("bronze_to_silver")
         .config("spark.hadoop.fs.s3a.endpoint", endpoint)
@@ -35,6 +62,7 @@ def build_spark(endpoint: str) -> SparkSession:
 
 
 def main():
+    """Executa o estagio silver de um dt: le, valida, separa e mede."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--dt", required=True)
     parser.add_argument("--project", default="evt-lakehouse")
