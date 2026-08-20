@@ -25,3 +25,7 @@ derby.log
 spark-events/
 .out/
 .ivy/
+
+# LocalStack runtime e build da Lambda
+.localstack/
+infra/.build/
