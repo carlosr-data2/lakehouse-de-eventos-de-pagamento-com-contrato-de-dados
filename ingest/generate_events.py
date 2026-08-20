@@ -2,10 +2,13 @@
 
 Fabrica os dias de eventos com defeitos injetados de proposito (cada
 defeito mapeia para uma regra do contrato aplicado no bronze_to_silver) e
-duplicatas exatas (entrega "at least once" de broker), alem da dimensao de
-estabelecimentos usada no broadcast join da gold. Seed fixa por padrao:
-mesmos argumentos geram os mesmos eventos, o que torna reprocessos e
-comparacoes deterministicos.
+duplicatas exatas (entrega "at least once" de broker).
+
+Tambem publica a dimensao de estabelecimentos usada no broadcast join da
+gold.
+
+Seed fixa por padrao: mesmos argumentos geram os mesmos eventos, o que
+torna reprocessos e comparacoes deterministicos.
 
 Destinos:
     s3://evt-lakehouse-bronze/events/dt={dt}/events-{dt}.jsonl.gz

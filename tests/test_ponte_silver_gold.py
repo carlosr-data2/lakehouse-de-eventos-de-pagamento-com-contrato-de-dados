@@ -3,10 +3,13 @@
 Os unitarios por camada tem um ponto cego deliberado: o do contrato
 fabrica entrada crua e para no silver; o da gold fabrica um silver
 proprio e para na gold. Renomear uma coluna em shape_silver deixa os
-DOIS verdes -- e quebra o job real em producao. Este teste liga as
-pontas: passa dado fabricado PELO contrato e entrega o resultado real
-dele ao GOLD_SQL. Deriva de schema entre as camadas falha AQUI, em
-segundos, nao no pipeline rodando de madrugada.
+DOIS verdes -- e quebra o job real em producao.
+
+Este teste liga as pontas: passa dado fabricado PELO contrato e entrega
+o resultado real dele ao GOLD_SQL.
+
+Deriva de schema entre as camadas falha AQUI, em segundos, nao no
+pipeline rodando de madrugada.
 
 (Experimento que motivou o teste: mude o alias "amount" em shape_silver
 e rode a suite -- so este teste cai, com UNRESOLVED_COLUMN apontando a

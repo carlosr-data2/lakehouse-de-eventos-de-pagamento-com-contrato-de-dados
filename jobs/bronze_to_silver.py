@@ -1,8 +1,9 @@
 """Job bronze -> silver: aplica o contrato de dados e roteia a quarentena.
 
-Le a particao do dia da bronze (JSON Lines gzip), roda o pipeline do
-contrato (tipagem -> deduplicacao -> regras -> separacao, ver contract.py)
-e escreve tres saidas: o silver modelado, a quarentena com os motivos de
+Le a particao do dia da bronze (JSON Lines gzip) e roda o pipeline do
+contrato (tipagem -> deduplicacao -> regras -> separacao, ver contract.py).
+
+Escreve tres saidas: o silver modelado, a quarentena com os motivos de
 rejeicao e as metricas do estagio para o plano de controle.
 
 Origem:

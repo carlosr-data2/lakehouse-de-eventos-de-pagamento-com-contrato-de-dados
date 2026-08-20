@@ -6,9 +6,10 @@ esta ok?" e a quarentena + quality gate, em runtime).
 
 Os dados de teste nao vem do lake: cada teste FABRICA em memoria as 1-2
 linhas de que precisa (ver _row/raw_df) -- minimas, cirurgicas e
-deterministicas. Dado real e pessimo pra testar logica: grande (lento),
-aleatorio (o cenario pode nem existir nele) e instavel (muda sem o codigo
-mudar).
+deterministicas.
+
+Dado real e pessimo pra testar logica: grande (lento), aleatorio (o
+cenario pode nem existir nele) e instavel (muda sem o codigo mudar).
 
 Rodar local (make test) e o ciclo de feedback de quem desenvolve; o CI
 roda a MESMA suite a cada push, numa maquina limpa -- um itera rapido, o
@@ -16,6 +17,7 @@ outro e o portao do repositorio. Um nao substitui o outro.
 
 Nada aqui exige Docker: pip install pyspark ja embute o Spark inteiro
 (basta uma JVM na maquina) -- o estagio unit do CI roda exatamente assim.
+
 E nada exige Glue/EMR: os jobs sao PySpark puro sem GlueContext (ADR-005),
 entao a logica e testavel em qualquer Python com Java.
 """
@@ -72,8 +74,10 @@ def _row(**kwargs):
     Cada teste sabota SO o campo que quer exercitar
     (_row(amount_cents="abc")) -- assim fica obvio qual regra causou o
     resultado, e o test_registro_valido_passa ganha de graca o seu caso
-    base. Padrao arrange-act-assert: monta o dado, aplica a funcao real,
-    confere a saida.
+    base.
+
+    Padrao arrange-act-assert: monta o dado, aplica a funcao real, confere
+    a saida.
     """
     base = {
         "event_id": "e1", "occurred_at": "2026-07-03T10:00:00", "customer_id": "cus_1",

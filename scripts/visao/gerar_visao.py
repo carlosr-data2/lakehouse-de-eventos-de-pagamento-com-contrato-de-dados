@@ -1,9 +1,11 @@
 """Gera .out/visao-dados.html: as entradas e saidas de cada camada do lake.
 
 Pagina local com contagens + amostras de bronze, NRT, silver, quarentena,
-gold e metricas, lidas DIRETO do LocalStack. Autosservico: rode
-`make visao` depois de qualquer passo e abra no navegador. Camada que
-ainda nao existe aparece como "ainda nao gerada", nao como erro.
+gold e metricas, lidas DIRETO do LocalStack.
+
+Autosservico: rode `make visao` depois de qualquer passo e abra no
+navegador. Camada que ainda nao existe aparece como "ainda nao gerada",
+nao como erro.
 """
 import argparse
 import html

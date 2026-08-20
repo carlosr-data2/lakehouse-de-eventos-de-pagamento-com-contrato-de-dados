@@ -2,14 +2,16 @@
 
 Envia eventos (com os mesmos defeitos do gerador batch) para o Kinesis
 Data Stream; o Firehose entrega na bronze sob events_nrt/dt=.../ em micro
-lotes de ate 60s. Reusa clean_event/corrupt do gerador batch de proposito:
-NRT e batch sao caminhos de ENTREGA diferentes do mesmo dado, nao dados
-diferentes.
+lotes de ate 60s.
+
+Reusa clean_event/corrupt do gerador batch de proposito: NRT e batch sao
+caminhos de ENTREGA diferentes do mesmo dado, nao dados diferentes.
 
 A PartitionKey e o merchant_id -- a mesma chave de negocio dos jobs. Com
 um estabelecimento dominante isso concentraria trafego num shard so (hot
-shard, o skew em versao streaming). A escolha esta documentada aqui porque
-ela e uma decisao, nao um default.
+shard, o skew em versao streaming).
+
+A escolha esta documentada aqui porque ela e uma decisao, nao um default.
 
 Destino:
     Kinesis {PROJECT}-events-nrt -> Firehose ->

@@ -1,9 +1,11 @@
 """Job silver -> gold: o agregado diario merchant_daily.
 
-Le a janela deslizante do silver (o dt alvo + N dias anteriores, historico
-de que as funcoes de janela precisam), junta a dimensao de estabelecimentos
-via broadcast e materializa o agregado de negocio do dia com o SQL
-analitico de GOLD_SQL (CTEs, FILTER, ranking e LAG).
+Le a janela deslizante do silver (o dt alvo + N dias anteriores, o
+historico de que as funcoes de janela precisam).
+
+Junta a dimensao de estabelecimentos via broadcast e materializa o
+agregado de negocio do dia com o SQL analitico de GOLD_SQL (CTEs, FILTER,
+ranking e LAG).
 
 Origens:
     s3://{project}-silver/events/dt={dt}/   (janela de lookback+1 dias)
@@ -54,8 +56,10 @@ def window_dates(dt: str, lookback: int):
     """Lista as datas da janela deslizante: o dt alvo e os N anteriores.
 
     O job le apenas essa janela porque o LAG por merchant do GOLD_SQL so
-    precisa do historico imediato; ler o silver inteiro daria o mesmo
-    resultado com custo crescendo junto com o historico.
+    precisa do historico imediato.
+
+    Ler o silver inteiro daria o mesmo resultado com custo crescendo junto
+    com o historico.
 
     Args:
         dt: Data alvo no formato YYYY-MM-DD.

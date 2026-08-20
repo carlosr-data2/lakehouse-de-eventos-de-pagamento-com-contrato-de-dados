@@ -2,9 +2,11 @@
 
 Nao roda no pipeline: existe para a comparacao lado a lado da decisao de
 orquestracao (ADR-006) -- mesmo fluxo wait_landing -> silver -> gold ->
-quality_gate, expresso na granularidade do Airflow. Os operadores de
-submissao sao stubs; em producao seriam GlueJobOperator ou
-EmrServerlessStartJobOperator apontando para os mesmos scripts PySpark.
+quality_gate, expresso na granularidade do Airflow.
+
+Os operadores de submissao sao stubs; em producao seriam GlueJobOperator
+ou EmrServerlessStartJobOperator apontando para os mesmos scripts
+PySpark.
 """
 
 from datetime import datetime, timedelta

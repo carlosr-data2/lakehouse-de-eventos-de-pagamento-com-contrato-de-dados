@@ -3,9 +3,10 @@
 Roda apos o terraform apply do estagio integration (LocalStack) e verifica
 o essencial de cada plano: buckets criados, state machine registrada,
 Lambda respondendo (inclusive falhando do jeito esperado sem dado),
-caminho NRT existente e monitoramento no lugar. Cada verificacao acumula
-falhas numa lista; qualquer falha derruba o processo com exit code 1 -- e
-isso que reprova o job no CI.
+caminho NRT existente e monitoramento no lugar.
+
+Cada verificacao acumula falhas numa lista; qualquer falha derruba o
+processo com exit code 1 -- e isso que reprova o job no CI.
 """
 
 import argparse
@@ -77,8 +78,10 @@ def check_monitoring(endpoint, failures):
     Limite de emulador tratado como o ValidateStateMachineDefinition do
     ADR-008: o cloudwatch do LocalStack 3.8 community responde 500 ao
     DescribeAlarms mesmo com o alarme criado (PutMetricAlarm e DeleteAlarms
-    funcionam -- o apply e o destroy provam). A leitura tolera o erro do
-    emulador com aviso; se a API responder e o recurso NAO existir, falha.
+    funcionam -- o apply e o destroy provam).
+
+    A leitura tolera o erro do emulador com aviso; se a API responder e o
+    recurso NAO existir, falha.
     """
     try:
         alarms = client("cloudwatch", endpoint).describe_alarms(

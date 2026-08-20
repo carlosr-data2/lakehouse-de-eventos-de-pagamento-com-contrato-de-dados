@@ -7,8 +7,10 @@ gerada, sem silver, sem LocalStack.
 E rodam JUNTO com os do contrato porque a suite e do repositorio, nao do
 passo: pytest tests varre a pasta inteira -- a rede de regressao que
 confere, a cada mudanca, tambem o que voce "nao tocou" (um ajuste no
-contrato pode mudar coluna que a gold consome). Filtre com -k ou por
-arquivo pra iterar; feche o trabalho com a suite inteira.
+contrato pode mudar coluna que a gold consome).
+
+Filtre com -k ou por arquivo pra iterar; feche o trabalho com a suite
+inteira.
 """
 import sys
 from pathlib import Path
@@ -41,9 +43,11 @@ def silver_view(spark):
     """Cria a view silver_events com o cenario minimo do GOLD_SQL.
 
     Exercita cada construcao: FILTER condicional, ranking por categoria,
-    LAG por merchant e o filtro de moeda. m1 e m2 disputam a mesma
-    categoria; m3 esta sozinho em outra; m1 tem historico no dia anterior
-    (LAG preenchido); a linha USD nao pode contar.
+    LAG por merchant e o filtro de moeda.
+
+    m1 e m2 disputam a mesma categoria; m3 esta sozinho em outra; m1 tem
+    historico no dia anterior (LAG preenchido); a linha USD nao pode
+    contar.
     """
     rows = [
         # dt, merchant, customer, metodo, status, amount, moeda

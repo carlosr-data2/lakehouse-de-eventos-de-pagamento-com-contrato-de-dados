@@ -123,10 +123,12 @@ def validate_landing(event):
     """Acao 1: valida se a particao do dia chegou na bronze.
 
     E a pre-condicao do pipeline inteiro -- falhar cedo aqui evita queimar
-    recurso de cluster. dt="auto" (ou ausente) resolve para D-1 em UTC: e
-    assim que o agendamento do EventBridge dispara sem saber aritmetica de
-    data -- os estados seguintes leem o dt resolvido daqui ($.landing.dt),
-    nao do input.
+    recurso de cluster.
+
+    dt="auto" (ou ausente) resolve para D-1 em UTC: e assim que o
+    agendamento do EventBridge dispara sem saber aritmetica de data -- os
+    estados seguintes leem o dt resolvido daqui ($.landing.dt), nao do
+    input.
 
     Args:
         event: Payload com dt opcional (YYYY-MM-DD, "auto" ou ausente).

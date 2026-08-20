@@ -2,8 +2,9 @@
 
 Funcoes puras de DataFrame -> DataFrame, sem I/O e sem SparkSession propria:
 quem le e escreve e o job (bronze_to_silver.py), o que permite testar cada
-regra com dado fabricado em memoria (tests/test_contract.py). Ordem de
-aplicacao no job: cast_types -> deduplicate -> apply_contract ->
+regra com dado fabricado em memoria (tests/test_contract.py).
+
+Ordem de aplicacao no job: cast_types -> deduplicate -> apply_contract ->
 split_valid_quarantine -> shape_silver.
 """
 
@@ -34,6 +35,7 @@ def cast_types(df: DataFrame) -> DataFrame:
 
     Usa try_cast via expressao SQL (a funcao so existe no modulo Python a
     partir do PySpark 4): valor invalido vira NULL em vez de derrubar o job.
+
     O NULL resultante e capturado depois pelas regras de apply_contract.
 
     Args:
@@ -54,9 +56,10 @@ def deduplicate(df: DataFrame) -> DataFrame:
 
     Entre eventos com o mesmo id, mantem o de occurred_at mais recente
     (janela por event_id ordenada por occurred_at_typed desc);
-    dropDuplicates manteria um registro arbitrario. E essa ordenacao
-    temporal que tambem absorve o upsert do CDC sem mudanca no pipeline
-    (ver ingest/generate_cdc_updates.py).
+    dropDuplicates manteria um registro arbitrario.
+
+    E essa ordenacao temporal que tambem absorve o upsert do CDC sem
+    mudanca no pipeline (ver ingest/generate_cdc_updates.py).
 
     Args:
         df: DataFrame ja tipado por cast_types.

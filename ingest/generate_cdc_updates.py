@@ -2,16 +2,21 @@
 
 Re-emite eventos JA EXISTENTES de um dt com conteudo atualizado (status
 vira refunded, occurred_at avanca 1h) -- o formato de chegada de um upsert
-vindo de um CDC real (DMS/Debezium). O ponto da demonstracao e que o
-pipeline NAO precisa mudar: a deduplicacao do contrato (janela por
-event_id ordenada por occurred_at, mantendo o mais recente) absorve o
-upsert por construcao. Rode o bronze_to_silver de novo depois deste script
-e confira o status trocado.
+vindo de um CDC real (DMS/Debezium).
+
+O ponto da demonstracao e que o pipeline NAO precisa mudar: a deduplicacao
+do contrato (janela por event_id ordenada por occurred_at, mantendo o mais
+recente) absorve o upsert por construcao.
+
+Rode o bronze_to_silver de novo depois deste script e confira o status
+trocado.
 
 Por que nao DMS de verdade: o LocalStack community nao emula DMS. O
-desenho completo com DMS -> S3 esta em docs/CDC-DMS.md; este script prova
-a SEMANTICA (upsert por chave + ordenacao temporal), que e o que o
-contrato precisa suportar -- a ferramenta de captura e intercambiavel.
+desenho completo com DMS -> S3 esta em docs/CDC-DMS.md.
+
+Este script prova a SEMANTICA (upsert por chave + ordenacao temporal), que
+e o que o contrato precisa suportar -- a ferramenta de captura e
+intercambiavel.
 
 Origem e destino:
     s3://evt-lakehouse-bronze/events/dt={dt}/  (le o batch do dia e grava
