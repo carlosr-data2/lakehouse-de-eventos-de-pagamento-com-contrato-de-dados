@@ -104,7 +104,7 @@ jobs/        Jobs PySpark (bronze→silver com contrato/quarentena, silver→gol
 tests/       Testes unitários do contrato de dados (pytest, SparkSession local, sem infra)
 sql/         Consultas de validação e DDL de exposição para Redshift
 dbt/         Analytics engineering sobre o Postgres de serving: modelos, testes e linhagem (ADR-009)
-notebooks/   Bancada de laboratório: contrato e GOLD_SQL explorados interativamente (ver notebooks/README.md)
+notebooks/   Bancada de laboratório: contrato, GOLD_SQL, ingestão/NRT e CDC interativos + mapa passo→bancada (ver notebooks/README.md)
 airflow/     DAG equivalente à máquina de estados, para comparação
 ci/          Smoke test executado contra a infraestrutura provisionada no CI
 docs/        Roteiro completo de construção, com teoria e código comentado

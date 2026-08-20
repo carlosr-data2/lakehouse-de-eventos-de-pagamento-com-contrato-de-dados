@@ -14,11 +14,35 @@ pytest: notebook prova que funcionou *quando você rodou*; a suíte prova que
 |---|---|---|
 | [`01_laboratorio_contrato.ipynb`](01_laboratorio_contrato.ipynb) | As funções puras do contrato (`jobs/contract.py`): cast tolerante, dedup determinística, acúmulo de motivos, quarentena, modelagem do silver — e a distribuição de rejeições usando o próprio gerador | `tests/test_contract.py` |
 | [`02_laboratorio_gold_sql.ipynb`](02_laboratorio_gold_sql.ipynb) | O `GOLD_SQL` (`jobs/silver_to_gold.py`) desmontado: filtro de moeda, `FILTER (WHERE ...)`, broadcast join, `DENSE_RANK`/`LAG`, o NULL do estreante e leitura de plano com `explain()` | `tests/test_gold_sql.py` |
+| [`03_laboratorio_ingestao_nrt.ipynb`](03_laboratorio_ingestao_nrt.ipynb) | A mecânica da ingestão (`ingest/`): evento limpo, defeitos com probabilidade medida, duplicatas "at least once", JSONL+gzip da bronze e a semântica NRT — PartitionKey, ordem por chave e o hot shard simulado (sem Spark, sem Kinesis) | `tests/test_contract.py` (dedup) |
+| [`04_laboratorio_cdc.ipynb`](04_laboratorio_cdc.ipynb) | O upsert CDC absorvido pela dedup do contrato, por construção: reprocesso com update, o contrafactual sem dedup (GMV dobrado) e a prova de que ordem de chegada não importa | `tests/test_contract.py` |
 
 Nada aqui toca S3/LocalStack — tudo roda em memória, com dados fabricados
 (os mesmos helpers `_row`/`raw_df` dos testes). Para explorar o **dado real**
 do lake, os caminhos são `make visao` (página HTML de todas as camadas) e
 `make gold-pg` (gold num Postgres local).
+
+## De passo do projeto para bancada
+
+Estudando um passo do Projeto 1 (a trilha da vaga, no app)? A coluna da direita
+diz qual bancada abrir — notebook quando é lógica de dados em memória; `make`,
+console ou doc quando é infraestrutura e operação (notebook ali seria só um
+invólucro de comandos, pior que o Makefile).
+
+| Passo | Tema | Bancada |
+|---|---|---|
+| 1 | Provisionamento: storage, IAM, métricas | `make retomar` + [`docs/ARQUITETURA.md`](../docs/ARQUITETURA.md) |
+| 2 | Provisionamento: plano de controle | `make retomar` + ADR-004 em [`docs/DECISOES.md`](../docs/DECISOES.md) |
+| 3 | Geração e ingestão na bronze | **notebook 03** + `make visao` (a bronze de verdade) |
+| 4 | Contrato bronze→silver, quarentena, testes | **notebook 01** + `tests/test_contract.py` |
+| 5 | SQL analítico silver→gold | **notebook 02** + `tests/test_gold_sql.py` |
+| 6 | Orquestração ponta a ponta | `make pipeline` + `make visao`; a comparação está em [`airflow/`](../airflow/) |
+| 7 | CI/CD, FinOps, fechamento | [`docs/CI.md`](../docs/CI.md) (cada estágio reproduzível localmente) |
+| 8 | Spark tuning: skew, salting, AQE, SparkUI | **notebook 02 §6** (`explain`) + **notebook 03 §6** (o skew na versão shard) |
+| 9 | NRT (Kinesis→Firehose) e CDC | **notebooks 03 e 04**; o caminho real com `make nrt` / `make cdc` |
+| 10 | Monitoramento e agendamento | `make visao` (métricas) + [`docs/OPERACAO.md`](../docs/OPERACAO.md) |
+| 11 | Governança, Data Mesh, gold num banco vivo | `make gold-pg` + [`docs/GOVERNANCA.md`](../docs/GOVERNANCA.md) e [`docs/DATA-MESH.md`](../docs/DATA-MESH.md) |
+| 12 | Analytics Engineering com dbt | `make dbt` + `cd dbt && dbt docs serve`; ADR-009 |
 
 ## Setup (uma vez)
 
