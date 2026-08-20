@@ -20,6 +20,7 @@ derby.log
 # SO / editor
 .DS_Store
 .idea/
+.ipynb_checkpoints/
 
 # Saidas locais de laboratorio (event logs do SparkUI, export CSV pro Postgres)
 spark-events/
