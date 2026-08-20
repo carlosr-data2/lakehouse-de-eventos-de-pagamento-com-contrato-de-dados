@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: gold
+    description: >
+      Gold do lakehouse materializada no Postgres de serving pelo
+      `make gold-pg` (scripts/redshift_pg/). E a interface publica do
+      data product -- dicionario de dados em docs/GOVERNANCA.md.
+    schema: analytics
+    tables:
+      - name: merchant_daily
+        description: >
+          Agregado diario por estabelecimento (DDL em
+          scripts/redshift_pg/ddl_postgres.sql). Mudar coluna aqui e
+          mudanca de contrato com consumidor.
+        columns:
+          - name: dt
+            tests: [not_null]
+          - name: merchant_id
+            tests: [not_null]

@@ -1,0 +1,24 @@
+# Camada de analytics engineering sobre o warehouse de SERVING (o Postgres
+# do `make gold-pg`), nao sobre o lake: dbt dentro do S3 exigiria
+# dbt-spark/dbt-athena, e o job de contrato bronze->silver continua sendo
+# codigo Spark testado com pytest. Taxonomia: pytest testa codigo Spark;
+# dbt testa modelos SQL; a quarentena vigia o dado em runtime (ADR-009).
+name: evt_lakehouse_analytics
+version: "1.0.0"
+profile: evt_lakehouse_analytics
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+models:
+  evt_lakehouse_analytics:
+    staging:
+      # View: sempre atual, custo zero de storage -- staging nao transforma,
+      # so declara chave e nomes estaveis por cima da fonte.
+      +materialized: view
+    marts:
+      +materialized: table
+      # O ANALYZE manual do rodar_gold_pg.sh, automatizado: estatistica pro
+      # planejador apos CADA materializacao (identico no Redshift).
+      +post-hook: "ANALYZE {{ this }}"

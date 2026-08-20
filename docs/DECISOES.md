@@ -81,3 +81,13 @@ Registro das decisões estruturais do projeto em formato ADR compacto — contex
 **Alternativas consideradas.** `~> 5.60` solto — deixa o init resolver pra versão mais nova e é um bug latente que dispara sozinho no futuro (foi exatamente assim que o CI o encontrou).
 
 **Consequências.** Atualizar o provider vira decisão explícita; ao migrar pra AWS real, a trava pode (e deve) ser removida.
+
+## ADR-009 — dbt no warehouse de serving, não no lake
+
+**Contexto.** A modelagem de consumo (silver→gold) é SQL por decisão do projeto, e a área de negócio audita essa camada. dbt operacionaliza SQL — deploy, testes, documentação, linhagem — mas precisa de um lugar pra rodar, e o pipeline tem dois candidatos: dentro do lake (S3/Spark) ou no warehouse de serving (o Postgres do `make gold-pg`, o papel que o Redshift faria em produção).
+
+**Decisão.** dbt apenas no serving ([`dbt/`](../dbt/)): source declarado sobre `analytics.merchant_daily`, staging como view com chave explícita, dois marts (table com `post-hook ANALYZE` e incremental com `unique_key`), testes nos três andares que a ferramenta oferece — nativos (`unique`/`not_null`/`accepted_values`), genérico com argumentos (macro `entre`) e singular de reconciliação mart × fonte — com targets dev/prod separados por schema e `dbt docs` como linhagem extraída do pipeline. O job PySpark de contrato bronze→silver continua testado com pytest.
+
+**Alternativas consideradas.** dbt sobre o lake via dbt-spark/dbt-athena (o LocalStack community não emula Athena/Glue e o ganho seria reescrever em outra ferramenta o que já é função pura testada); substituir o job de contrato por testes de dbt (regressão: teste de dbt reprova, mas não roteia a linha rejeitada pra quarentena com o motivo gravado).
+
+**Consequências.** A taxonomia fica explícita — pytest testa código Spark, dbt testa modelos SQL, a quarentena vigia o dado em runtime — e a promoção dev→prod dos modelos vira gesto declarativo (`--target prod`). O serving local usa senha de laboratório versionada em `dbt/profiles.yml` (nada ali é segredo); contra um warehouse real, as credenciais sairiam do profile pra `env_var`/secret do CI. O estágio `dbt` do CI prova os modelos numa máquina limpa com uma gold mínima semeada ([`ci/seed_gold_pg.sql`](../ci/seed_gold_pg.sql)).

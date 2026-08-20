@@ -1,0 +1,28 @@
+# Perfil versionado de proposito: aponta pro Postgres EFEMERO do
+# `make gold-pg` (container local, senha de laboratorio -- nada aqui e
+# segredo). O dbt procura profiles.yml no diretorio do projeto antes de
+# ~/.dbt, entao `cd dbt && dbt run` funciona sem configuracao extra.
+# No CI, o service container replica porta e senha (ver .github/workflows).
+evt_lakehouse_analytics:
+  target: dev # promocao explicita: dbt run --target prod
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      port: 5433 # publicada pelo rodar_gold_pg.sh (5433 -> 5432)
+      user: postgres
+      password: gold
+      dbname: postgres
+      schema: dbt_dev
+      threads: 1
+    prod:
+      type: postgres
+      host: localhost
+      port: 5433
+      user: postgres
+      password: gold
+      dbname: postgres
+      # Acesso por camada (docs/GOVERNANCA.md): consumidor le analytics_mart,
+      # nunca dbt_dev -- dev e prod separados por schema, como nos grants.
+      schema: analytics_mart
+      threads: 1

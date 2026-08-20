@@ -62,6 +62,11 @@ pip install ruff==0.16.1 && ruff check jobs ingest lambda ci tests
 pip install pyspark==3.5.1 pytest
 python -m pytest tests -q
 
+# estágio dbt (precisa do Docker; gold-pg de pé faz o papel do service container)
+make gold-pg
+pip install dbt-postgres
+make dbt
+
 # estágio integration (precisa do Docker)
 docker compose up -d
 terraform -chdir=infra init && terraform -chdir=infra apply -auto-approve
@@ -77,7 +82,7 @@ A taxonomia que este repositório implementa (confundi-los é o erro mais comum)
 |---|---|---|---|
 | **Unitário** | o CÓDIGO da transformação, com dado fabricado | a cada mudança de código | `tests/` (contrato + GOLD_SQL) |
 | **Integração** | o sistema montado — a infra sobe? | no CI, mais caro | estágio `integration` (Terraform + LocalStack + smoke) |
-| **De dados** (quality) | o DADO real de hoje, contra expectativas | em runtime, toda execução | quarentena com motivo + quality gate |
+| **De dados** (quality) | o DADO real de hoje, contra expectativas | em runtime, toda execução | quarentena com motivo + quality gate; no serving, `dbt test` ([`dbt/`](../dbt/), ADR-009) |
 
 Uma consequência prática que surpreende na primeira vez: **a suíte é do repositório, não do "passo" em que você está** — `pytest tests` roda a pasta inteira, sempre, porque a suíte é a rede de regressão do projeto: cada mudança é conferida também contra o que você *não* tocou. Testes de uma parte ainda não exercitada passam normalmente (testam código com dado fabricado, não o estado do lake). Filtro (`-k`, arquivo) serve para iterar rápido; encerrar trabalho pede a suíte inteira.
 
