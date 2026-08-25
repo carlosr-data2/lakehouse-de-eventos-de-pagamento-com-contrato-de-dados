@@ -33,7 +33,6 @@ from contract import (
     split_valid_quarantine,
 )
 
-
 # A fixture spark (sessao unica com Iceberg + Delta no classpath) mora no
 # conftest.py: uma JVM so por processo de pytest.
 
