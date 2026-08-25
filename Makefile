@@ -9,9 +9,14 @@ ENDPOINT ?= http://localhost:4566
 # CONTEUDO, nao a DISPONIBILIDADE - em producao, espelhe a imagem num
 # registry proprio (ECR) em vez de depender do Hub. Alternativa mantida
 # aberta: apache/spark (paths, usuario e entrypoint diferentes).
+# Formatos de tabela como dependencia de runtime, nao de codigo: Iceberg
+# (silver) e Delta (gold) entram por --packages no spark-submit -- os
+# mesmos jars que Glue/EMR ja embarcam. iceberg-spark-runtime-3.5_2.12 e
+# delta-spark_2.12 casam com o Spark 3.5.x/Scala 2.12 da imagem pinada.
+PACKAGES = org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.6.1,io.delta:delta-spark_2.12:3.2.0
 SPARK = docker run --rm --network lakehouse-net --user root \
 	-v $(PWD)/jobs:/opt/jobs -v $(PWD)/.ivy:/root/.ivy2 bitnamilegacy/spark:3.5.1 spark-submit \
-	--packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+	--packages $(PACKAGES)
 
 up:
 	docker compose up -d
@@ -34,6 +39,7 @@ validate:
 # derrubando o /opt/bitnami/python/bin onde o pip vive.
 test:
 	docker run --rm --user root -v $(PWD):/app -w /app \
+		-v $(PWD)/.ivy:/root/.ivy2 \
 		-e PYTHONPATH=/opt/bitnami/spark/python:/opt/bitnami/spark/python/lib/py4j-0.10.9.7-src.zip \
 		bitnamilegacy/spark:3.5.1 \
 		bash -c "pip install pytest --quiet && python -m pytest tests -q"
@@ -84,7 +90,7 @@ visao:
 	docker run --rm --network lakehouse-net --user root \
 		-v $(PWD)/scripts/visao:/opt/visao -v $(PWD)/.out:/out -v $(PWD)/.ivy:/root/.ivy2 \
 		bitnamilegacy/spark:3.5.1 spark-submit \
-		--packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
+		--packages $(PACKAGES) \
 		/opt/visao/gerar_visao.py --endpoint http://localstack:4566
 	@echo ""
 	@echo "Pronto: abra .out/visao-dados.html no navegador"

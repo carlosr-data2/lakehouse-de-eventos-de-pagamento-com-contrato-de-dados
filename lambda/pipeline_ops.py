@@ -26,8 +26,13 @@ REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 # Prefixo de saida de cada estagio. Fonte unica de verdade sobre onde cada
 # camada escreve - o Spark usa exatamente os mesmos caminhos.
+#
+# silver e tabela Iceberg (catalogo hadoop): os arquivos de DADOS vivem sob
+# data/ dentro do warehouse; o check aponta pra la porque metadata/ existe
+# mesmo num commit sem linhas. gold e tabela Delta no mesmo caminho fisico
+# de sempre (o _delta_log mora junto dos parquet).
 STAGE_OUTPUT = {
-    "silver": (f"{PROJECT}-silver", "events"),
+    "silver": (f"{PROJECT}-silver", "warehouse/silver/events/data"),
     "gold": (f"{PROJECT}-gold", "merchant_daily"),
 }
 

@@ -19,7 +19,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from pyspark.sql import SparkSession
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "jobs"))
 
@@ -36,17 +35,8 @@ TARGET = "2026-07-02"
 ANTERIOR = "2026-07-01"
 
 
-@pytest.fixture(scope="session")
-def spark():
-    """SparkSession local reutilizada por toda a sessao de teste."""
-    session = (
-        SparkSession.builder.master("local[2]")
-        .appName("tests-ponte")
-        .config("spark.sql.shuffle.partitions", "2")
-        .getOrCreate()
-    )
-    yield session
-    session.stop()
+# A fixture spark (sessao unica com Iceberg + Delta no classpath) mora no
+# conftest.py: uma JVM so por processo de pytest.
 
 
 # Mesmo padrao do test_contract: linha crua perfeita, cada caso sabota so

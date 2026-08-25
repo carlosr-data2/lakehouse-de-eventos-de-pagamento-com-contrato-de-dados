@@ -8,11 +8,13 @@ agregado de negocio do dia com o SQL analitico de GOLD_SQL (CTEs, FILTER,
 ranking e LAG).
 
 Origens:
-    s3://{project}-silver/events/dt={dt}/   (janela de lookback+1 dias)
+    lake.silver.events                      (tabela Iceberg; janela de
+        lookback+1 dias via pruning de particao)
     s3://{project}-gold/dim_merchants/merchants.csv
 
 Destinos:
-    s3://{project}-gold/merchant_daily/     (Parquet particionado por dt)
+    s3://{project}-gold/merchant_daily/     (tabela Delta particionada por
+        dt, sobrescrita idempotente via replaceWhere)
     s3://{project}-artifacts/metrics/gold/dt={dt}/  (JSON, plano de controle)
 """
 
@@ -20,16 +22,22 @@ import argparse
 from datetime import datetime, timedelta, timezone
 
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 
 
-def build_spark(endpoint: str) -> SparkSession:
+def build_spark(endpoint: str, project: str) -> SparkSession:
     """Cria a SparkSession com a mesma configuracao S3A do estagio anterior.
 
     AQE com coalescePartitions ligado para coalescer particoes de shuffle
     automaticamente apos as agregacoes.
 
+    Este estagio fala os DOIS formatos: le o silver pelo catalogo Iceberg
+    "lake" (mesma configuracao do estagio anterior) e escreve o gold em
+    Delta -- dai as duas extensions e o DeltaCatalog no spark_catalog.
+
     Args:
         endpoint: URL do S3 (LocalStack no ciclo local).
+        project: Prefixo dos buckets (define o warehouse do catalogo).
 
     Returns:
         SparkSession pronta para ler e escrever no lake.
@@ -47,7 +55,18 @@ def build_spark(endpoint: str) -> SparkSession:
         )
         .config("spark.sql.adaptive.enabled", "true")
         .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
-        .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
+        .config(
+            "spark.sql.extensions",
+            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,"
+            "io.delta.sql.DeltaSparkSessionExtension",
+        )
+        .config("spark.sql.catalog.lake", "org.apache.iceberg.spark.SparkCatalog")
+        .config("spark.sql.catalog.lake.type", "hadoop")
+        .config("spark.sql.catalog.lake.warehouse", f"s3a://{project}-silver/warehouse")
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
         .getOrCreate()
     )
 
@@ -158,18 +177,15 @@ def main():
     parser.add_argument("--endpoint", default="http://localstack:4566")
     args = parser.parse_args()
 
-    spark = build_spark(args.endpoint)
+    spark = build_spark(args.endpoint, args.project)
     p = args.project
     run_ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
-    # Le apenas as particoes da janela que existem. basePath preserva a
-    # coluna dt como coluna de particao ao ler caminhos especificos.
+    # Le a tabela Iceberg filtrando a janela: o pruning de particao do
+    # formato resolve o que antes exigia montar a lista de caminhos na mao
+    # (e quebrava se uma particao da janela nao existisse no S3).
     dates = window_dates(args.dt, args.lookback)
-    paths = [f"s3a://{p}-silver/events/dt={d}/" for d in dates]
-    silver = (
-        spark.read.option("basePath", f"s3a://{p}-silver/events/")
-        .parquet(*paths)
-    )
+    silver = spark.read.table("lake.silver.events").where(F.col("dt").isin(dates))
     silver.createOrReplaceTempView("silver_events")
 
     # Dimensao pequena lida do proprio bucket gold, alvo do broadcast join.
@@ -183,11 +199,18 @@ def main():
 
     # repartition por dt antes da escrita: um arquivo por particao em vez de
     # dezenas de fragmentos herdados do shuffle das janelas.
+    #
+    # Delta com replaceWhere: sobrescreve APENAS a particao do dt alvo, em
+    # transacao registrada no _delta_log -- re-execucao do mesmo dt nao
+    # duplica nem apaga vizinhos. O caminho fisico do merchant_daily nao
+    # muda em relacao ao Parquet; o log de transacoes passa a morar junto.
     (
         gold.repartition("dt")
-        .write.mode("overwrite")
+        .write.format("delta")
+        .mode("overwrite")
+        .option("replaceWhere", f"dt = '{args.dt}'")
         .partitionBy("dt")
-        .parquet(f"s3a://{p}-gold/merchant_daily/")
+        .save(f"s3a://{p}-gold/merchant_daily/")
     )
 
     # Metricas do estagio, no mesmo padrao do silver, para o plano de controle.

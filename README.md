@@ -2,12 +2,13 @@
 
 [![ci](https://github.com/carlosr-data2/lakehouse-de-eventos-de-pagamento-com-contrato-de-dados/actions/workflows/ci.yml/badge.svg)](https://github.com/carlosr-data2/lakehouse-de-eventos-de-pagamento-com-contrato-de-dados/actions/workflows/ci.yml)
 
-Pipeline de dados ponta a ponta construído a partir dos requisitos de uma vaga real de **Engenheiro de Dados Sênior**: arquitetura medallion (bronze/silver/gold) com quarentena, contrato de dados explícito, processamento em PySpark, orquestração serverless com Step Functions e CI em quatro estágios — tudo rodando **100% local e sem custo** via LocalStack, com o mesmo Terraform que subiria na AWS real.
+Pipeline de dados ponta a ponta construído a partir dos requisitos de uma vaga real de **Engenheiro de Dados Sênior**: arquitetura medallion (bronze/silver/gold) com quarentena, contrato de dados explícito, processamento em PySpark, **silver em Iceberg e gold em Delta Lake**, orquestração serverless com Step Functions e CI em quatro estágios — tudo rodando **100% local e sem custo** via LocalStack, com o mesmo Terraform que subiria na AWS real.
 
 ## O que este projeto demonstra
 
 - **Pipeline como produto de software**: infraestrutura 100% declarada em Terraform, lógica de negócio testável sem cluster, CI que provisiona a infra do zero a cada push.
 - **Contrato de dados com quarentena**: o que reprova na validação não é descartado — vai pra quarentena com o motivo gravado.
+- **Open Table Formats lado a lado**: silver como tabela **Iceberg** (commit atômico, time travel, schema evolution) e gold como tabela **Delta** (`replaceWhere` idempotente por partição) — com as garantias provadas por teste em [`tests/test_table_formats.py`](tests/test_table_formats.py).
 - **Separação plano de controle / plano de dados**: quem orquestra (Step Functions + Lambda) não é quem processa (Spark).
 - **Decisões com trade-off explícito**: Step Functions vs Airflow (a DAG equivalente está em [`airflow/`](airflow/)), PySpark puro vs GlueContext, LocalStack como prática de DataOps.
 
@@ -28,7 +29,7 @@ flowchart LR
     end
 
     subgraph silver_col["Silver / Quarentena"]
-        silver["S3<br/>evt-lakehouse-silver"]
+        silver["Iceberg<br/>lake.silver.events"]
         quarantine["S3<br/>evt-lakehouse-quarantine"]
     end
 
@@ -37,7 +38,7 @@ flowchart LR
     end
 
     subgraph gold_col["Gold"]
-        gold["S3<br/>evt-lakehouse-gold"]
+        gold["Delta<br/>merchant_daily"]
     end
 
     subgraph orquestracao["Orquestração"]
@@ -87,6 +88,7 @@ flowchart LR
 | Decisão | Alternativa rejeitada | Por quê |
 |---|---|---|
 | PySpark puro, sem GlueContext/DynamicFrame | Recursos nativos do Glue (bookmarks, resolveChoice) | Portabilidade total: o mesmo job roda em Glue, EMR, EMR Serverless, Databricks e no container local — alavanca real de FinOps |
+| Iceberg no silver, Delta no gold, Parquet na quarentena | Um único formato (ou Parquet cru em tudo) | Cada formato no ponto em que joga a favor — schema evolution no silver, `replaceWhere` no reprocesso diário do gold — e a comparação real entre os dois fica concreta no mesmo pipeline ([ADR-010](docs/DECISOES.md#adr-010--open-table-formats-iceberg-no-silver-delta-no-gold)) |
 | Step Functions para orquestração | Airflow | Pipeline AWS-nativo com retry/backoff declarativo e zero infra pra manter; a comparação concreta está em [`airflow/dag_evt_lakehouse.py`](airflow/dag_evt_lakehouse.py) |
 | Quarentena como área de primeira classe | Descartar/corrigir reprovados em silêncio | Dado descartado silenciosamente é o jeito mais rápido de perder confiança no lakehouse |
 | LocalStack para todo o ciclo local e CI | Conta AWS de desenvolvimento | Ambiente descartável, idêntico na forma dos recursos, custo zero, feedback em segundos |
@@ -100,8 +102,8 @@ A justificativa completa de cada decisão — contexto, alternativas rejeitadas 
 infra/       Terraform: buckets, IAM, DynamoDB, Lambda, SNS/SQS e a máquina de estados
 lambda/      Plano de controle: validações, checkpoint de métricas e notificação
 ingest/      Gerador de eventos sintéticos e ingestão na camada bronze
-jobs/        Jobs PySpark (bronze→silver com contrato/quarentena, silver→gold) — funções puras, testáveis
-tests/       Testes unitários do contrato de dados (pytest, SparkSession local, sem infra)
+jobs/        Jobs PySpark (bronze→silver com contrato/quarentena em Iceberg, silver→gold em Delta) — funções puras, testáveis
+tests/       Testes unitários do contrato e das garantias Iceberg/Delta (pytest, SparkSession local, sem infra)
 sql/         Consultas de validação e DDL de exposição para Redshift
 dbt/         Analytics engineering sobre o Postgres de serving: modelos, testes e linhagem (ADR-009)
 notebooks/   Bancada de laboratório: contrato, GOLD_SQL, ingestão/NRT e CDC interativos + mapa passo→bancada (ver notebooks/README.md)
@@ -143,13 +145,13 @@ make destroy
 O workflow ([`ci.yml`](.github/workflows/ci.yml)) roda em quatro estágios, do mais barato pro mais caro — a anatomia completa, as decisões (versões pinadas, socket do Docker no LocalStack, destroy garantido) e como reproduzir cada estágio localmente estão em [`docs/CI.md`](docs/CI.md):
 
 1. **static** — `terraform fmt`/`validate` + `ruff` (segundos, pega erro trivial antes de subir qualquer coisa).
-2. **unit** — pytest do contrato de dados com SparkSession local, sem infraestrutura.
+2. **unit** — pytest do contrato de dados e das garantias de formato (Iceberg/Delta via `spark.jars.packages`, warehouse em diretório temporário) com SparkSession local, sem infraestrutura.
 3. **dbt** (paralelo ao unit) — Postgres como service container no papel do gold-pg, gold mínima semeada ([`ci/seed_gold_pg.sql`](ci/seed_gold_pg.sql)) e `dbt run` + `dbt test` numa máquina limpa.
 4. **integration** — LocalStack como service container, `terraform apply` de verdade e smoke test, com `terraform destroy` garantido via `if: always()`.
 
 ## Limitações assumidas
 
-Role IAM única para todo o pipeline, ausência de formato de tabela transacional (Iceberg/Delta), ausência de gatilho por evento e de detecção de deriva de schema. As duas flags de variável que isolam o que o LocalStack community não emula estão documentadas em [`infra/variables.tf`](infra/variables.tf). O porquê de cada limitação e o caminho de evolução estão em [`docs/LIMITACOES.md`](docs/LIMITACOES.md).
+Role IAM única para todo o pipeline, catálogo Iceberg `hadoop` (sem Glue/REST) com manutenção de tabelas não agendada, ausência de gatilho por evento e de detecção de deriva de schema. As duas flags de variável que isolam o que o LocalStack community não emula estão documentadas em [`infra/variables.tf`](infra/variables.tf). O porquê de cada limitação e o caminho de evolução estão em [`docs/LIMITACOES.md`](docs/LIMITACOES.md).
 
 ## Documentação
 
