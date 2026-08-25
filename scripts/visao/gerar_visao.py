@@ -35,8 +35,13 @@ pre { background: #EEF2EE; border: 1px solid #DFE5DF; border-radius: .5rem; padd
 """
 
 
-def build_spark(endpoint):
-    """Cria a SparkSession com a mesma configuracao S3A dos jobs do lake."""
+def build_spark(endpoint, project):
+    """Cria a SparkSession com a mesma configuracao S3A e catalogos dos jobs.
+
+    Mesmos formatos do pipeline: silver e tabela Iceberg (catalogo lake),
+    gold e tabela Delta -- ler com o leitor errado (parquet cru) somaria
+    versoes antigas como se fossem dado atual.
+    """
     return (
         SparkSession.builder.appName("visao_dados")
         .config("spark.hadoop.fs.s3a.endpoint", endpoint)
@@ -47,6 +52,18 @@ def build_spark(endpoint):
         .config(
             "spark.hadoop.fs.s3a.aws.credentials.provider",
             "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+        )
+        .config(
+            "spark.sql.extensions",
+            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,"
+            "io.delta.sql.DeltaSparkSessionExtension",
+        )
+        .config("spark.sql.catalog.lake", "org.apache.iceberg.spark.SparkCatalog")
+        .config("spark.sql.catalog.lake.type", "hadoop")
+        .config("spark.sql.catalog.lake.warehouse", f"s3a://{project}-silver/warehouse")
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
         .getOrCreate()
     )
@@ -93,7 +110,7 @@ def main():
     ap.add_argument("--amostra", type=int, default=8)
     args = ap.parse_args()
     p, n = args.project, args.amostra
-    spark = build_spark(args.endpoint)
+    spark = build_spark(args.endpoint, args.project)
     partes = []
 
     def bronze():
@@ -111,7 +128,7 @@ def main():
                 f"(micro lotes de até 60s):</p><pre>{linhas}</pre>")
 
     def silver():
-        df = spark.read.parquet(f"s3a://{p}-silver/events/")
+        df = spark.read.table("lake.silver.events")
         total = df.count()
         por_dt = df.groupBy("dt").count().orderBy("dt").collect()
         dts = " · ".join(f"{r['dt']}: {r['count']:,}" for r in por_dt)
@@ -132,7 +149,7 @@ def main():
                 + tabela(df.select(*cols).limit(n + 2).collect(), cols))
 
     def gold():
-        df = spark.read.parquet(f"s3a://{p}-gold/merchant_daily/")
+        df = spark.read.format("delta").load(f"s3a://{p}-gold/merchant_daily/")
         total = df.count()
         cols = ["dt", "merchant_id", "merchant_name", "category", "tx_total",
                 "taxa_aprovacao", "gmv_aprovado", "ticket_medio", "share_pix",

@@ -10,7 +10,8 @@ Origem:
     s3://{project}-bronze/events/dt={dt}/
 
 Destinos:
-    s3://{project}-silver/events/          (Parquet particionado por dt)
+    lake.silver.events                     (tabela Iceberg particionada por
+        dt; warehouse em s3://{project}-silver/warehouse/)
     s3://{project}-quarantine/events/      (Parquet, com rejection_reasons)
     s3://{project}-artifacts/metrics/silver/dt={dt}/  (JSON lido pela
         Lambda checkpoint_stage do plano de controle)
@@ -31,15 +32,19 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 
-def build_spark(endpoint: str) -> SparkSession:
+def build_spark(endpoint: str, project: str) -> SparkSession:
     """Cria a SparkSession configurada para falar S3A com o LocalStack.
 
     path.style.access e obrigatorio; o provider de credencial simples evita
-    busca por metadata de instancia. partitionOverwriteMode=dynamic limita
-    o overwrite as particoes efetivamente escritas pelo run.
+    busca por metadata de instancia.
+
+    O catalogo Iceberg "lake" (tipo hadoop, warehouse no proprio bucket
+    silver) e quem resolve o nome lake.silver.events; os jars entram por
+    --packages no spark-submit (Makefile), nao por codigo.
 
     Args:
         endpoint: URL do S3 (LocalStack no ciclo local).
+        project: Prefixo dos buckets (define o warehouse do catalogo).
 
     Returns:
         SparkSession pronta para ler e escrever no lake.
@@ -56,8 +61,18 @@ def build_spark(endpoint: str) -> SparkSession:
             "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
         )
         .config("spark.sql.adaptive.enabled", "true")
+        # dynamic segue necessario para a QUARENTENA, que continua Parquet
+        # particionado (ADR-010): sem ele, o overwrite do dt apagaria as
+        # particoes dos outros dias. O silver (Iceberg) nao depende disso.
         .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
         .config("spark.sql.parquet.compression.codec", "snappy")
+        .config(
+            "spark.sql.extensions",
+            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+        )
+        .config("spark.sql.catalog.lake", "org.apache.iceberg.spark.SparkCatalog")
+        .config("spark.sql.catalog.lake.type", "hadoop")
+        .config("spark.sql.catalog.lake.warehouse", f"s3a://{project}-silver/warehouse")
         .getOrCreate()
     )
 
@@ -70,7 +85,7 @@ def main():
     parser.add_argument("--endpoint", default="http://localstack:4566")
     args = parser.parse_args()
 
-    spark = build_spark(args.endpoint)
+    spark = build_spark(args.endpoint, args.project)
     run_ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     p = args.project
 
@@ -92,15 +107,26 @@ def main():
     valid_records = silver.count()
     rejected_records = deduped_records - valid_records
 
-    # Escrita do silver em Parquet particionado. coalesce dimensionado por
-    # volume evita o problema de arquivos pequenos.
+    # Escrita do silver como tabela Iceberg. overwritePartitions substitui
+    # apenas as particoes presentes no DataFrame (idempotente como o
+    # partitionOverwriteMode dynamic do Parquet), mas num commit ATOMICO:
+    # leitor concorrente ve o snapshot anterior ou o novo, nunca dado
+    # parcial. coalesce dimensionado por volume evita arquivos pequenos.
     target_files = max(1, valid_records // 500000 + 1)
-    (
-        silver.coalesce(target_files)
-        .write.mode("overwrite")
-        .partitionBy("dt")
-        .parquet(f"s3a://{p}-silver/events/")
-    )
+    shaped = silver.coalesce(target_files)
+    spark.sql("CREATE NAMESPACE IF NOT EXISTS lake.silver")
+    if spark.catalog.tableExists("lake.silver.events"):
+        shaped.writeTo("lake.silver.events").overwritePartitions()
+    else:
+        # format-version 2 habilita row-level deletes (merge-on-read) -- a
+        # base para um futuro MERGE INTO de upserts de CDC sem reescrever
+        # a particao inteira.
+        (
+            shaped.writeTo("lake.silver.events")
+            .partitionedBy(F.col("dt"))
+            .tableProperty("format-version", "2")
+            .create()
+        )
 
     # Quarentena com o motivo preservado: dado reprovado nao e descartado,
     # e material de evidencia para cobrar correcao na origem.

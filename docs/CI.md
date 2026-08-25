@@ -9,7 +9,7 @@ Os três estágios são encadeados (`needs:`) em ordem crescente de custo. Erro 
 | Estágio | O que prova | Duração típica |
 |---|---|---|
 | `static` | O código está bem-formado (fmt/validate do Terraform, lint do Python) | ~20s |
-| `unit` | A lógica de negócio está certa (pytest do contrato de dados, Spark local, zero infra) | ~1min |
+| `unit` | A lógica de negócio está certa e os formatos de tabela garantem o que prometem (pytest do contrato + Iceberg/Delta, Spark local, zero infra) | ~1min |
 | `integration` | A infraestrutura sobe do zero (LocalStack + `terraform apply` + smoke test) | ~2min |
 
 ## Anatomia do `ci.yml` — o vocabulário do GitHub Actions
@@ -80,7 +80,7 @@ A taxonomia que este repositório implementa (confundi-los é o erro mais comum)
 
 | Andar | Testa o quê | Quando roda | Aqui |
 |---|---|---|---|
-| **Unitário** | o CÓDIGO da transformação, com dado fabricado | a cada mudança de código | `tests/` (contrato + GOLD_SQL) |
+| **Unitário** | o CÓDIGO da transformação, com dado fabricado | a cada mudança de código | `tests/` (contrato + GOLD_SQL + garantias Iceberg/Delta) |
 | **Integração** | o sistema montado — a infra sobe? | no CI, mais caro | estágio `integration` (Terraform + LocalStack + smoke) |
 | **De dados** (quality) | o DADO real de hoje, contra expectativas | em runtime, toda execução | quarentena com motivo + quality gate; no serving, `dbt test` ([`dbt/`](../dbt/), ADR-009) |
 
@@ -95,6 +95,8 @@ sudo apt install -y openjdk-17-jre-headless   # a única dependência de sistema
 pip install pyspark==3.5.1 pytest
 python -m pytest tests -q                      # Spark local[*] DENTRO do processo do pytest
 ```
+
+Um detalhe novo desde o ADR-010: a fixture do `tests/conftest.py` declara os jars de Iceberg e Delta em `spark.jars.packages`, então a **primeira** execução da suíte baixa esses pacotes do Maven Central (o Ivy guarda cache em `~/.ivy2`; no `make test`, o cache é o `.ivy/` do repositório). Ambiente sem saída pra internet precisa desse cache pré-populado.
 
 Por que não Glue nem EMR para isso: **EMR** é pagar cluster para verificar lógica que roda num laptop — é lugar de carga real e integração em conta de dev. **Glue** é o caso instrutivo: estes jobs são testáveis em qualquer lugar *exatamente porque* o ADR-005 os manteve PySpark puro — com `GlueContext`/`DynamicFrame`, o teste exigiria o runtime do Glue, que a AWS distribui como... imagem Docker (`aws-glue-libs`) ou sessões interativas pagas. A decisão de portabilidade é o que torna a pergunta trivial. Em empresa sem Docker local, os testes rodam no **CI gerenciado** (CodeBuild ou Actions) com esta mesma receita, em máquina descartável que não é a sua.
 

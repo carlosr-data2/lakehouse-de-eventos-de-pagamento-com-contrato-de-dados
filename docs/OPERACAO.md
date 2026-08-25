@@ -156,9 +156,10 @@ cat /tmp/out.json
 
 Os quatro testes unitários devem passar antes de qualquer execução contra dado real. Se algum falhar, corrija a regra antes de rodar o job — é exatamente para isso que os testes existem.
 
-Confirme que as três partições do silver foram escritas em Parquet:
+Confirme que o silver foi escrito como tabela Iceberg — arquivos de dados sob `data/dt=.../` e os metadados do catálogo (manifests + snapshots) sob `metadata/`:
 
-aws --endpoint-url=http://localhost:4566 s3 ls s3://evt-lakehouse-silver/events/ --recursive | head -20
+aws --endpoint-url=http://localhost:4566 s3 ls s3://evt-lakehouse-silver/warehouse/silver/events/data/ --recursive | head -20
+aws --endpoint-url=http://localhost:4566 s3 ls s3://evt-lakehouse-silver/warehouse/silver/events/metadata/ | head
 
 Confirme que a quarentena recebeu os registros reprovados:
 
@@ -183,7 +184,7 @@ cat /tmp/out.json
 
 ### Job silver para gold: SQL analítico avançado, broadcast join e exposição para Redshift
 
-Confirme que as três partições da camada gold existem:
+Confirme que as três partições da camada gold existem — repare no `_delta_log/`, o log de transações que mora junto dos Parquet:
 
 aws --endpoint-url=http://localhost:4566 s3 ls s3://evt-lakehouse-gold/merchant_daily/ --recursive | head
 
@@ -191,11 +192,11 @@ Leia as métricas do estágio gold e confira a contagem de estabelecimentos (dev
 
 aws --endpoint-url=http://localhost:4566 s3 cp s3://evt-lakehouse-artifacts/metrics/gold/dt=2026-07-03/ - --recursive | head -1
 
-Verifique o conteúdo analítico abrindo o Parquet e conferindo três coisas: se variacao_gmv_pct está nula no dia 2026-07-01 (correto, não há dia anterior) e preenchida em 2026-07-03; se rank_categoria começa em 1 dentro de cada categoria; e se taxa_aprovacao fica entre 0 e 1:
+Verifique o conteúdo analítico abrindo a tabela Delta (nunca com `spark.read.parquet` cru — ele somaria versões antigas do log como se fossem dado atual) e conferindo três coisas: se variacao_gmv_pct está nula no dia 2026-07-01 (correto, não há dia anterior) e preenchida em 2026-07-03; se rank_categoria começa em 1 dentro de cada categoria; e se taxa_aprovacao fica entre 0 e 1:
 
 docker run --rm --network lakehouse-net --user root \
   -v "$(pwd)/jobs":/opt/jobs -v "$(pwd)/.ivy":/root/.ivy2 \
-  bitnamilegacy/spark:3.5.1 bash -c "echo \"spark.read.parquet('s3a://evt-lakehouse-gold/merchant_daily/').orderBy('dt','rank_categoria').show(10, False)\" > /tmp/c.py && spark-submit --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 --conf spark.hadoop.fs.s3a.endpoint=http://localstack:4566 --conf spark.hadoop.fs.s3a.access.key=test --conf spark.hadoop.fs.s3a.secret.key=test --conf spark.hadoop.fs.s3a.path.style.access=true /tmp/c.py"
+  bitnamilegacy/spark:3.5.1 bash -c "echo \"spark.read.format('delta').load('s3a://evt-lakehouse-gold/merchant_daily/').orderBy('dt','rank_categoria').show(10, False)\" > /tmp/c.py && spark-submit --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,io.delta:delta-spark_2.12:3.2.0 --conf spark.hadoop.fs.s3a.endpoint=http://localstack:4566 --conf spark.hadoop.fs.s3a.access.key=test --conf spark.hadoop.fs.s3a.secret.key=test --conf spark.hadoop.fs.s3a.path.style.access=true /tmp/c.py"
 
 Confirme que o plano de controle enxerga a saída do estágio gold:
 

@@ -175,7 +175,7 @@ if [ "$COM_DADOS" = 1 ]; then
     aviso "seu Makefile ainda não tem os alvos de dados (ingest/silver/gold) -- eles nascem nos Passos 3-5; implemente esses passos primeiro e a flag --com-dados passa a funcionar"
   fi
 elif tem "bronze/events"; then
-  tem "silver/events" && tem "gold/merchant_daily" \
+  tem "silver/warehouse/silver/events/data" && tem "gold/merchant_daily" \
     && ok "bronze, silver e gold populados -- cadeia de dados completa" \
     || aviso "bronze tem dados mas silver/gold não -- rode os jobs (make silver gold)"
 else
@@ -185,7 +185,7 @@ fi
 printf '\nRetomada concluída. Infra dos Passos 1-2 de pé.\n'
 if ! tem "bronze/events"; then
   printf 'Posição inferida da máquina: antes do Passo 3 (geração e ingestão dos eventos).\n'
-elif ! tem "silver/events"; then
+elif ! tem "silver/warehouse/silver/events/data"; then
   printf 'Posição inferida da máquina: antes do Passo 4 (job bronze->silver).\n'
 elif ! tem "gold/merchant_daily"; then
   printf 'Posição inferida da máquina: antes do Passo 5 (job silver->gold).\n'

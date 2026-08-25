@@ -1,8 +1,8 @@
 """Exporta a gold merchant_daily do lake para um unico CSV com header.
 
-A ponte entre o mundo colunar (Parquet no S3/LocalStack) e o \\copy do
-Postgres de serving. Roda dentro do container Spark, igual aos jobs (ver
-rodar_gold_pg.sh, que monta /out no host).
+A ponte entre o mundo colunar (tabela Delta no S3/LocalStack) e o \\copy
+do Postgres de serving. Roda dentro do container Spark, igual aos jobs
+(ver rodar_gold_pg.sh, que monta /out no host).
 
 Origem:
     s3://{project}-gold/merchant_daily/
@@ -16,7 +16,12 @@ from pyspark.sql import SparkSession
 
 
 def build_spark(endpoint):
-    """Cria a SparkSession com a mesma configuracao S3A dos jobs do lake."""
+    """Cria a SparkSession com a mesma configuracao S3A dos jobs do lake.
+
+    A gold agora e tabela Delta: o leitor precisa do jar (via --packages no
+    rodar_gold_pg.sh) pra resolver o _delta_log em vez de somar parquet de
+    versoes antigas.
+    """
     return (
         SparkSession.builder.appName("exportar_gold_csv")
         .config("spark.hadoop.fs.s3a.endpoint", endpoint)
@@ -27,6 +32,11 @@ def build_spark(endpoint):
         .config(
             "spark.hadoop.fs.s3a.aws.credentials.provider",
             "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+        )
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
         .getOrCreate()
     )
@@ -41,7 +51,7 @@ def main():
     args = parser.parse_args()
 
     spark = build_spark(args.endpoint)
-    gold = spark.read.parquet(f"s3a://{args.project}-gold/merchant_daily/")
+    gold = spark.read.format("delta").load(f"s3a://{args.project}-gold/merchant_daily/")
 
     # coalesce(1): um arquivo so, porque o destino e um \copy sequencial -
     # aqui paralelismo de escrita nao compra nada e complica o COPY.

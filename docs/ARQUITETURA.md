@@ -193,7 +193,7 @@ flowchart LR
     end
 
     bronze -->|lê| job1
-    job1 -->|contrato de dados OK, Parquet| silver
+    job1 -->|contrato de dados OK, tabela Iceberg| silver
     job1 -->|reprovou contrato| quarantine
     job1 -->|publica métricas do estágio| artifacts
     job1 -.->|valida checkpoint| ops
@@ -210,9 +210,9 @@ flowchart LR
     artifacts["S3<br/>evt-lakehouse-artifacts"]
     job2["Job PySpark silver->gold"]
     gold["S3<br/>evt-lakehouse-gold"]
-    silver -->|lê eventos validados| job2
+    silver -->|lê lake.silver.events, pruning por dt| job2
     gold -->|lê dimensão de<br/>estabelecimentos, broadcast join| job2
-    job2 -->|agregações por estabelecimento/dia| gold
+    job2 -->|agregações por estabelecimento/dia, tabela Delta| gold
     job2 -->|publica métricas do estágio| artifacts
     classDef novo fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
     classDef existente fill:#f1f5f9,stroke:#94a3b8,stroke-width:1px,stroke-dasharray:4 3,color:#334155

@@ -27,7 +27,7 @@ docker run --rm --network lakehouse-net --user root \
   -v "$RAIZ/scripts/redshift_pg:/opt/pg" -v "$RAIZ/.out:/out" \
   -v "$RAIZ/.ivy:/root/.ivy2" \
   bitnamilegacy/spark:3.5.1 spark-submit \
-  --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
+  --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,io.delta:delta-spark_2.12:3.2.0 \
   /opt/pg/exportar_gold_csv.py --endpoint http://localstack:4566
 
 # 3) DDL adaptada + carga via \copy (o COPY do pobre, e do Postgres).

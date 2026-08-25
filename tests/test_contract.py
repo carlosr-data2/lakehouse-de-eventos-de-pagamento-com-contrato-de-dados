@@ -24,9 +24,6 @@ entao a logica e testavel em qualquer Python com Java.
 import sys
 from pathlib import Path
 
-import pytest
-from pyspark.sql import SparkSession
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "jobs"))
 
 from contract import (
@@ -37,20 +34,8 @@ from contract import (
 )
 
 
-@pytest.fixture(scope="session")
-def spark():
-    """SparkSession local reutilizada por toda a sessao de teste.
-
-    Criar e destruir por teste tornaria a suite lenta demais para o CI.
-    """
-    session = (
-        SparkSession.builder.master("local[2]")
-        .appName("tests")
-        .config("spark.sql.shuffle.partitions", "2")
-        .getOrCreate()
-    )
-    yield session
-    session.stop()
+# A fixture spark (sessao unica com Iceberg + Delta no classpath) mora no
+# conftest.py: uma JVM so por processo de pytest.
 
 
 def raw_df(spark, rows):
