@@ -34,8 +34,8 @@ invólucro de comandos, pior que o Makefile).
 | 1 | Provisionamento: storage, IAM, métricas | `make retomar` + [`docs/ARQUITETURA.md`](../docs/ARQUITETURA.md) |
 | 2 | Provisionamento: plano de controle | `make retomar` + ADR-004 em [`docs/DECISOES.md`](../docs/DECISOES.md) |
 | 3 | Geração e ingestão na bronze | **notebook 03** + `make visao` (a bronze de verdade) |
-| 4 | Contrato bronze→silver, quarentena, testes | **notebook 01** + `tests/test_contract.py` |
-| 5 | SQL analítico silver→gold | **notebook 02** + `tests/test_gold_sql.py` |
+| 4 | Contrato bronze→silver (tabela Iceberg), quarentena, testes | **notebook 01** + `tests/test_contract.py`; garantias do Iceberg (overwrite idempotente, time travel, schema evolution) em `tests/test_table_formats.py` |
+| 5 | SQL analítico silver→gold (tabela Delta) | **notebook 02** + `tests/test_gold_sql.py`; garantias do Delta (`replaceWhere`, `versionAsOf`) em `tests/test_table_formats.py` |
 | 6 | Orquestração ponta a ponta | `make pipeline` + `make visao`; a comparação está em [`airflow/`](../airflow/) |
 | 7 | CI/CD, FinOps, fechamento | [`docs/CI.md`](../docs/CI.md) (cada estágio reproduzível localmente) |
 | 8 | Spark tuning: skew, salting, AQE, SparkUI | **notebook 02 §6** (`explain`) + **notebook 03 §6** (o skew na versão shard) |
